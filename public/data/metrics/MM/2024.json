@@ -1,0 +1,36 @@
+{
+  "kpi": {
+    "total": 314519,
+    "offsets": 219482,
+    "net": 95037
+  },
+  "categories": {
+    "energy": 203194,
+    "transport": 85853,
+    "waste": 25472
+  },
+  "targets": {
+    "energy": 257000,
+    "transport": 78000,
+    "waste": 34000
+  },
+  "scopes": {
+    "scope1": 0.52,
+    "scope2": 0.33,
+    "scope3": 0.15
+  },
+  "timeseries": [
+    { "month": "Jan", "energy": 12000, "transport": 6000, "waste": 2100 },
+    { "month": "Feb", "energy": 15000, "transport": 7500, "waste": 2200 },
+    { "month": "Mar", "energy": 18000, "transport": 8200, "waste": 2300 },
+    { "month": "Apr", "energy": 16500, "transport": 7800, "waste": 2150 },
+    { "month": "May", "energy": 17200, "transport": 7200, "waste": 2400 },
+    { "month": "Jun", "energy": 19000, "transport": 7900, "waste": 2250 },
+    { "month": "Jul", "energy": 20000, "transport": 8500, "waste": 2500 },
+    { "month": "Aug", "energy": 18500, "transport": 8100, "waste": 2350 },
+    { "month": "Sep", "energy": 17800, "transport": 7600, "waste": 2200 },
+    { "month": "Oct", "energy": 19200, "transport": 8300, "waste": 2400 },
+    { "month": "Nov", "energy": 16800, "transport": 7400, "waste": 2180 },
+    { "month": "Dec", "energy": 14194, "transport": 6353, "waste": 1897 }
+  ]
+}

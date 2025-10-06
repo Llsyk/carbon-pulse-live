@@ -1,0 +1,10 @@
+[
+  { "code": "ALL", "name": "All Countries" },
+  { "code": "MM", "name": "Myanmar" },
+  { "code": "TH", "name": "Thailand" },
+  { "code": "VN", "name": "Vietnam" },
+  { "code": "SG", "name": "Singapore" },
+  { "code": "MY", "name": "Malaysia" },
+  { "code": "ID", "name": "Indonesia" },
+  { "code": "PH", "name": "Philippines" }
+]
