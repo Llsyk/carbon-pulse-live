@@ -1,11 +1,16 @@
 {
   "files": [],
   "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
+ 
   "compilerOptions": {
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
+    "paths": { "@/*": ["src/*"] },
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+    "types": ["node"]
+  }
+
+,
     "noImplicitAny": false,
     "noUnusedParameters": false,
     "skipLibCheck": true,
@@ -13,4 +18,8 @@
     "noUnusedLocals": false,
     "strictNullChecks": false
   }
-}
+  
+  
+
+
+

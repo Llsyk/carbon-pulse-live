@@ -98,6 +98,13 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Top Row: Map + Logo */}
+        <header className="rounded-lg p-4 md:p-5 shadow-card"
+        style={{ background: 'linear-gradient(90deg, hsl(110 45% 88%) 0%, hsl(110 35% 82%) 100%)' }}>
+  <h1 className="text-xl md:text-2xl font-semibold text-[hsl(150_30%_12%)]">
+    Sustainability KPI Dashboard
+  </h1>
+</header>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-[400px] lg:h-[500px]">
             <CurrentLocationMap countryCode={selectedCountry} />
