@@ -79,7 +79,6 @@ const CurrentLocationMap = ({ countryCode = 'ALL' }: CurrentLocationMapProps) =>
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <MapRecenter center={mapConfig.center} zoom={mapConfig.zoom} />
-        
         {userLocation && (
           <Marker position={userLocation}>
             <Popup>Your Current Location</Popup>
