@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import KPICard from "@/components/KPICard";
 import SummaryTile from "@/components/SummaryTile";
@@ -23,11 +23,10 @@ type City = {
   };
 };
 
-/** ---------------- Demo data: ASEAN-10 ----------------
- * (Feel free to replace with API-fed values later)
- */
+/** ---------------- Demo data: ASEAN-10 ---------------- */
 const ASEAN_CITIES: City[] = [
-  // Myanmar
+  // (UNCHANGED) — your same data:
+  // YGN, BKK, JKT, HAN, MNL, KUL, SGP, PNH, VTE, BSB
   {
     id: "YGN", name: "Yangon", country: "Myanmar", lat: 16.8661, lng: 96.1951,
     metrics: {
@@ -43,7 +42,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Thailand
   {
     id: "BKK", name: "Bangkok", country: "Thailand", lat: 13.7563, lng: 100.5018,
     metrics: {
@@ -59,7 +57,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Indonesia
   {
     id: "JKT", name: "Jakarta", country: "Indonesia", lat: -6.2088, lng: 106.8456,
     metrics: {
@@ -75,7 +72,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Vietnam
   {
     id: "HAN", name: "Hanoi", country: "Vietnam", lat: 21.0278, lng: 105.8342,
     metrics: {
@@ -91,7 +87,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Philippines
   {
     id: "MNL", name: "Manila", country: "Philippines", lat: 14.5995, lng: 120.9842,
     metrics: {
@@ -107,7 +102,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Malaysia
   {
     id: "KUL", name: "Kuala Lumpur", country: "Malaysia", lat: 3.1390, lng: 101.6869,
     metrics: {
@@ -123,7 +117,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Singapore
   {
     id: "SGP", name: "Singapore", country: "Singapore", lat: 1.3521, lng: 103.8198,
     metrics: {
@@ -139,7 +132,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Cambodia
   {
     id: "PNH", name: "Phnom Penh", country: "Cambodia", lat: 11.5564, lng: 104.9282,
     metrics: {
@@ -155,7 +147,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Laos
   {
     id: "VTE", name: "Vientiane", country: "Laos", lat: 17.9757, lng: 102.6331,
     metrics: {
@@ -171,7 +162,6 @@ const ASEAN_CITIES: City[] = [
       ],
     },
   },
-  // Brunei
   {
     id: "BSB", name: "Bandar Seri Begawan", country: "Brunei", lat: 4.9031, lng: 114.9398,
     metrics: {
@@ -210,7 +200,6 @@ const statusLabel: Record<Status, string> = {
   worst: "Worst",
 };
 
-// Tailwind color system for tones (applied to wrappers)
 const toneClasses: Record<Status, { ring: string; bg: string; text: string; chip: string; marker: { stroke: string; fill: string } }> = {
   normal:   { ring: "ring-emerald-300", bg: "bg-emerald-50", text: "text-emerald-800", chip: "bg-emerald-100 text-emerald-800",
               marker: { stroke: "hsl(142 70% 30%)", fill: "hsl(142 70% 42%)" } },
@@ -222,7 +211,7 @@ const toneClasses: Record<Status, { ring: string; bg: string; text: string; chip
               marker: { stroke: "hsl(0 80% 38%)",   fill: "hsl(0 80% 46%)" } },
 };
 
-/** Small sparkline for the right column (no external lib) */
+/** Small sparkline (unchanged) */
 function Sparkline({ series, color = "hsl(142 60% 40%)" }:{
   series: number[];
   color?: string;
@@ -245,7 +234,7 @@ function Sparkline({ series, color = "hsl(142 60% 40%)" }:{
   );
 }
 
-/** Legend overlay */
+/** Legend overlay (unchanged, just positioned for fullscreen) */
 function Legend() {
   const items: { label: string; tone: Status }[] = [
     { label: "Normal (0–50)", tone: "normal" },
@@ -254,9 +243,9 @@ function Legend() {
     { label: "Worst (151+)", tone: "worst" },
   ];
   return (
-    <div className="absolute top-12 left-3 z-[1000] rounded-lg bg-white/90 backdrop-blur px-3 py-2 shadow border mt-7">
+    <div className="absolute top-4 left-4 z-[1000] rounded-lg bg-white/90 backdrop-blur px-3 py-2 shadow border">
       <div className="text-xs font-medium mb-1">AQI Legend</div>
-      <div className="flex flex-col gap-1 mt-7">
+      <div className="flex flex-col gap-1">
         {items.map(({ label, tone }) => (
           <div key={tone} className="flex items-center gap-2 text-xs">
             <span
@@ -271,156 +260,151 @@ function Legend() {
   );
 }
 
-export default function CityExplorer() {
-  const [selected, setSelected] = useState<City | null>(ASEAN_CITIES[0]);
-
-  const selectedStatus: Status | null = selected ? getStatusFromAQI(selected.metrics.aqi) : null;
-  const tone = selectedStatus ? toneClasses[selectedStatus] : toneClasses["normal"];
+/** -------- Modal with your existing right-column UI -------- */
+function DetailsModal({ city, onClose }: { city: City; onClose: () => void }) {
+  const selectedStatus = getStatusFromAQI(city.metrics.aqi);
+  const tone = toneClasses[selectedStatus];
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Left column — Map */}
-      
-      <div className="relative rounded-lg  shadow-card overflow-hidden mt-7 ml-5">
-         <h1 className="text-xl md:text-2xl font-semibold text-[hsl(150_30%_12%)]">
-    ASEAN Capitals Explorer 
-  </h1>
-        <div className="h-[520px]">
-           
-          <MapContainer
-            bounds={mapBounds}
-            scrollWheelZoom={true}
-            className="h-full w-full rounded-lg mt-10"
-          >
-            <TileLayer
-              attribution='&copy; OpenStreetMap'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {ASEAN_CITIES.map((c) => {
-              const s = getStatusFromAQI(c.metrics.aqi);
-              const m = toneClasses[s].marker;
+    <div className="fixed inset-0 z-[2000]">
+      {/* Backdrop */}
+      <button
+        aria-label="Close details"
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      {/* Panel (right-side sheet) */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`absolute right-6 top-6 max-w-lg w-[92vw] sm:w-[520px] rounded-xl border shadow-xl ring-2 ${tone.ring} ${tone.bg}`}
+      >
+        <div className="p-5">
+          {/* Header + close */}
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className={`text-xl font-semibold ${tone.text}`}>{city.name}</h2>
+              <p className="text-sm text-muted-foreground">{city.country}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-3 inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white hover:bg-neutral-50 text-neutral-600"
+              aria-label="Close"
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* KPI row (AQI) */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className={`rounded-xl p-0.5 ring-1 ${tone.ring}`}>
+              <div className={`rounded-xl ${tone.bg}`}>
+                <KPICard id="aqi" title="City AQI" value={city.metrics.aqi} unit="AQI" />
+              </div>
+            </div>
+            <span className={`text-xs self-center justify-self-start px-2 py-1 rounded-full border ${tone.chip} border-black/5`}>
+              {statusLabel[selectedStatus]}
+            </span>
+          </div>
+
+          {/* Targets / progress */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { key: "PM2.5", value: city.metrics.pm25, target: city.metrics.target.pm25, unit: "µg/m³" },
+              { key: "NO₂",   value: city.metrics.no2,   target: city.metrics.target.no2,   unit: "ppb" },
+              { key: "O₃",    value: city.metrics.o3,    target: city.metrics.target.o3,    unit: "ppb" },
+            ].map(({ key, value, target, unit }) => {
+              const ratio = value / target;
+              const st: Status = ratio <= 1 ? "normal" : ratio <= 1.2 ? "moderate" : ratio <= 1.5 ? "bad" : "worst";
+              const t = toneClasses[st];
               return (
-                <CircleMarker
-                  key={c.id}
-                  center={[c.lat, c.lng]}
-                  radius={10}
-                  pathOptions={{
-                    color: m.stroke,
-                    fillColor: m.fill,
-                    fillOpacity: 0.9,
-                    weight: 2,
-                  }}
-                  eventHandlers={{ click: () => setSelected(c) }}
-                >
-                  <Tooltip direction="top" offset={[0, -4]} opacity={1}>
-                    <div className="text-xs">
-                      <div className="font-medium">{c.name}</div>
-                      <div className="opacity-80">{c.country}</div>
-                      <div className="mt-1">AQI: <b>{c.metrics.aqi}</b> ({statusLabel[s]})</div>
-                      <div>PM2.5: {c.metrics.pm25} µg/m³</div>
-                    </div>
-                  </Tooltip>
-                </CircleMarker>
+                <div key={key} className={`rounded-xl p-0.5 ring-1 ${t.ring}`}>
+                  <div className={`rounded-xl ${t.bg}`}>
+                    <SummaryTile title={key} value={value} target={target} unit={unit} />
+                  </div>
+                </div>
               );
             })}
-          </MapContainer>
+          </div>
 
-          {/* Legend */}
-          <Legend />
-        </div>
-      </div>
-
-      {/* Right column — Details panel */}
-      <div className={`rounded-lg border shadow-card p-5 ring-2 mt-7 mr-5 ${tone.ring} ${tone.bg}`}>
-        {selected ? (
-          <div className="space-y-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className={`text-xl font-semibold ${tone.text}`}>{selected.name}</h2>
-                <p className="text-sm text-muted-foreground">{selected.country}</p>
+          {/* Mini trends */}
+          <div className="mt-4 rounded-lg border bg-white p-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">Monthly Trend</h3>
+            <div className="flex gap-6 items-end">
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">PM2.5</div>
+                <Sparkline series={city.metrics.timeseries.map(t => t.pm25)} color="hsl(0 70% 50%)" />
               </div>
-              <span className={`text-xs px-2 py-1 rounded-full border ${tone.chip} border-black/5`}>
-                {statusLabel[selectedStatus!]}
-              </span>
-            </div>
-
-            {/* KPI row (AQI) — wrapped with tone */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className={`rounded-xl p-0.5 ring-1 ${tone.ring}`}>
-                <div className={`rounded-xl ${tone.bg}`}>
-                  <KPICard
-                    id="aqi"
-                    title="City AQI"
-                    value={selected.metrics.aqi}
-                    unit="AQI"
-                    // If your KPICard supports variant/className, also pass them:
-                    // variant={selectedStatus}
-                    // className={`${tone.text}`}
-                  />
-                </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">NO₂</div>
+                <Sparkline series={city.metrics.timeseries.map(t => t.no2)} color="hsl(142 60% 40%)" />
               </div>
-            </div>
-
-            {/* Targets / progress — colorized wrappers per pollutant status against target */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { key: "PM2.5", value: selected.metrics.pm25, target: selected.metrics.target.pm25, unit: "µg/m³" },
-                { key: "NO₂",   value: selected.metrics.no2,   target: selected.metrics.target.no2,   unit: "ppb" },
-                { key: "O₃",    value: selected.metrics.o3,    target: selected.metrics.target.o3,    unit: "ppb" },
-              ].map(({ key, value, target, unit }) => {
-                // status vs target: if <= target → normal; within 20% → moderate; within 50% → bad; above → worst
-                const ratio = value / target;
-                const st: Status = ratio <= 1 ? "normal" : ratio <= 1.2 ? "moderate" : ratio <= 1.5 ? "bad" : "worst";
-                const t = toneClasses[st];
-                return (
-                  <div key={key} className={`rounded-xl p-0.5 ring-1 ${t.ring}`}>
-                    <div className={`rounded-xl ${t.bg}`}>
-                      <SummaryTile
-                        title={key}
-                        value={value}
-                        target={target}
-                        unit={unit}
-                        // If SummaryTile supports styling:
-                        // className={`${t.text}`}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Mini trends */}
-            <div className="rounded-lg border bg-white p-4">
-              <h3 className="text-sm font-medium text-muted-foreground mb-2">Monthly Trend</h3>
-              <div className="flex gap-6 items-end">
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">PM2.5</div>
-                  <Sparkline
-                    series={selected.metrics.timeseries.map(t => t.pm25)}
-                    color="hsl(0 70% 50%)"   // red
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">NO₂</div>
-                  <Sparkline
-                    series={selected.metrics.timeseries.map(t => t.no2)}
-                    color="hsl(142 60% 40%)" // green
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">O₃</div>
-                  <Sparkline
-                    series={selected.metrics.timeseries.map(t => t.o3)}
-                    color="hsl(210 70% 45%)" // blue
-                  />
-                </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">O₃</div>
+                <Sparkline series={city.metrics.timeseries.map(t => t.o3)} color="hsl(210 70% 45%)" />
               </div>
             </div>
           </div>
-        ) : (
-          <p className="text-muted-foreground">Click a city marker to view air-pollution details.</p>
-        )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** ---------------- FULLSCREEN MAP + MODAL ---------------- */
+export default function CityExplorer() {
+  // Start with no selection; clicking a city opens the modal
+  const [selected, setSelected] = useState<City | null>(null);
+
+  return (
+    <div className="fixed inset-0"> {/* Full screen map container */}
+      <MapContainer
+        bounds={mapBounds}
+        scrollWheelZoom={true}
+        className="h-full w-full"
+      >
+        <TileLayer
+          attribution='&copy; OpenStreetMap'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {ASEAN_CITIES.map((c) => {
+          const s = getStatusFromAQI(c.metrics.aqi);
+          const m = toneClasses[s].marker;
+          return (
+            <CircleMarker
+              key={c.id}
+              center={[c.lat, c.lng]}
+              radius={10}
+              pathOptions={{
+                color: m.stroke,
+                fillColor: m.fill,
+                fillOpacity: 0.9,
+                weight: 2,
+              }}
+              eventHandlers={{ click: () => setSelected(c) }}
+            >
+              <Tooltip direction="top" offset={[0, -4]} opacity={1}>
+                <div className="text-xs">
+                  <div className="font-medium">{c.name}</div>
+                  <div className="opacity-80">{c.country}</div>
+                  <div className="mt-1">AQI: <b>{c.metrics.aqi}</b> ({statusLabel[s]})</div>
+                  <div>PM2.5: {c.metrics.pm25} µg/m³</div>
+                </div>
+              </Tooltip>
+            </CircleMarker>
+          );
+        })}
+      </MapContainer>
+
+      {/* Title + Legend floating on map */}
+      <h1 className="absolute top-4 right-4 z-[1000] text-xl md:text-2xl font-semibold text-[hsl(150_30%_12%)] bg-white/80 backdrop-blur px-3 py-1 rounded">
+        ASEAN Capitals Explorer
+      </h1>
+      <Legend />
+
+      {/* Modal (right-side sheet) */}
+      {selected && <DetailsModal city={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
