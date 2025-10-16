@@ -87,22 +87,22 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* --- GREEN NAVBAR --- */}
-      <nav className="sticky top-0 z-50 bg-green-600 text-white shadow-md">
+      {/* --- LIGHT BLUE NAVBAR --- */}
+      {/* <nav className="sticky top-0 z-50 bg-blue-600 text-white shadow-md">
         <div className="container mx-auto flex items-center justify-between px-4 py-3">
           <h1 className="font-semibold text-lg tracking-wide">
-            🌿 Sustainability KPI Dashboard
+            ☁️ Air Quality Map
           </h1>
           <div className="flex gap-3">
-            <Button asChild variant="secondary" className="bg-white text-green-700 hover:bg-green-50">
+            <Button asChild variant="secondary" className="bg-white text-blue-700 hover:bg-blue-50">
               <a href="/">Home</a>
             </Button>
-            <Button asChild variant="secondary" className="bg-white text-green-700 hover:bg-green-50">
+            <Button asChild variant="secondary" className="bg-white text-blue-700 hover:bg-blue-50">
               <a href="/explorer">Map</a>
             </Button>
           </div>
         </div>
-      </nav>
+      </nav> */}
 
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* --- TOP ROW: MAP + SIMPLE WELCOME CARD --- */}
@@ -117,27 +117,27 @@ export default function Index() {
             className="h-[420px] lg:h-[500px] rounded-lg border border-border shadow-card flex flex-col items-center justify-center text-center p-6"
             style={{
               background:
-                "linear-gradient(180deg, hsl(140 55% 96%) 0%, hsl(140 40% 92%) 100%)",
+                "linear-gradient(180deg, hsl(210 80% 97%) 0%, hsl(210 70% 94%) 100%)",
             }}
           >
             {/* Large Brand Image */}
-            <div className="w-56 h-56 mb-4 rounded-xl overflow-hidden border border-green-200 shadow-md bg-white">
+            <div className="w-56 h-56 mb-4 rounded-xl overflow-hidden border border-blue-200 shadow-md bg-white">
               <BrandLogo />
             </div>
 
             {/* Simple Text */}
-            <h2 className="text-xl font-semibold text-green-900">
-              Welcome to Your Sustainability Dashboard
+            <h2 className="text-xl font-semibold text-blue-900">
+              Welcome to Your Air Quality Map
             </h2>
-            <p className="text-sm text-green-800/80 mt-2 max-w-sm">
-              Explore environmental performance and progress across ASEAN countries.
-              Choose filters below or view detailed city-level data.
+            <p className="text-sm text-blue-800/80 mt-2 max-w-sm">
+              Track AQI and pollutants across ASEAN. Choose filters below or tap
+              the map to explore cities and recent trends.
             </p>
 
             {/* Explore Map Button */}
             <Button
               asChild
-              className="mt-6 bg-green-600 hover:bg-green-700 text-white rounded-full px-5 py-2"
+              className="mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full px-5 py-2"
             >
               <a href="/explorer" className="inline-flex items-center gap-2">
                 <Compass className="h-4 w-4" />
@@ -195,7 +195,7 @@ export default function Index() {
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <Button
                 variant="default"
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
                 disabled={isLoading}
                 onClick={() => fetchMetrics(selectedCountry, selectedYear)}
                 aria-label="Apply filters"
@@ -206,7 +206,7 @@ export default function Index() {
                 <Button
                   variant="outline"
                   onClick={handleRetry}
-                  className="border-green-600 text-green-700 hover:bg-green-50"
+                  className="border-blue-600 text-blue-700 hover:bg-blue-50"
                 >
                   Retry
                 </Button>
@@ -229,33 +229,50 @@ export default function Index() {
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <KPICard
-                id="kpi-total"
-                title="Total CO₂ Emissions"
+                id="kpi-aqi"
+                title="Average AQI"
                 value={metrics.kpi.total}
-                variant="destructive"
-                hint="Gross emissions before offsets."
-              />
-              <KPICard
-                id="kpi-offsets"
-                title="Carbon Offsets"
-                value={metrics.kpi.offsets}
-                variant="success"
-                hint="Offsets purchased/applied."
-              />
-              <KPICard
-                id="kpi-net"
-                title="Net Impact"
-                value={metrics.kpi.net}
                 variant="warning"
-                hint="Total emissions minus offsets."
+                hint="Average Air Quality Index for the selected filters."
+              />
+              <KPICard
+                id="kpi-pm25"
+                title="PM2.5 (µg/m³)"
+                value={metrics.kpi.offsets}
+                variant="destructive"
+                hint="Fine particulate matter concentration."
+                unit="µg/m³"
+              />
+              <KPICard
+                id="kpi-no2"
+                title="NO₂ (ppb)"
+                value={metrics.kpi.net}
+                variant="default"
+                hint="Nitrogen dioxide concentration."
+                unit="ppb"
               />
             </div>
 
             {/* Summary Tiles */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <SummaryTile title="Energy" value={metrics.categories.energy} target={metrics.targets.energy} />
-              <SummaryTile title="Transportation" value={metrics.categories.transport} target={metrics.targets.transport} />
-              <SummaryTile title="Waste" value={metrics.categories.waste} target={metrics.targets.waste} />
+              <SummaryTile
+                title="PM2.5"
+                value={metrics.categories.energy}
+                target={metrics.targets.energy}
+                unit="µg/m³"
+              />
+              <SummaryTile
+                title="NO₂"
+                value={metrics.categories.transport}
+                target={metrics.targets.transport}
+                unit="ppb"
+              />
+              <SummaryTile
+                title="O₃"
+                value={metrics.categories.waste}
+                target={metrics.targets.waste}
+                unit="ppb"
+              />
             </div>
 
             {/* Charts */}
@@ -273,7 +290,7 @@ export default function Index() {
               <div className="mx-auto h-2 w-40 rounded bg-muted animate-pulse" />
             ) : (
               <p className="text-muted-foreground">
-                Pick filters and click <span className="font-medium">Apply</span> to load insights.
+                Pick filters and click <span className="font-medium">Apply</span> to load air quality insights.
               </p>
             )}
           </div>
