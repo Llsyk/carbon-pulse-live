@@ -5,10 +5,25 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "./models/User.js";
+import requireAuth from "./middleware/requireAuth.js";
+
+
+
 
 dotenv.config();
 
+// ... other imports ...
+
+
+//import { verifyMailer, checkAndSendOutingAlertForUser, startDailyOutingChecker } from "./utils/emailNotifier.js";
+// import { checkAndNotifyAQI } from "./utils/aqiNotifier.js";
+import { sendManualAlert, verifyMailer, startDailyManualAlert } from "./utils/emailNotifier.js";
+
+console.log("DEBUG EMAIL_USER:", process.env.EMAIL_USER);
+console.log("DEBUG EMAIL_PASS:", process.env.EMAIL_PASS ? "Loaded ✅" : "Missing ❌");
 const app = express();
+
+
 
 // --- CORS: allow your frontend origins (8080 + 127.0.0.1) ---
 app.use(
@@ -126,3 +141,48 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 API on http://localhost:${PORT}`));
+// Test route for sending AQI email
+// Optional: test endpoint for the logged-in user (secure)
+app.post("/api/notify/email", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const sent = await sendEmail(user);
+    if (!sent) {
+      return res.json({ message: "No email sent (missing email?)" });
+    }
+    return res.json({ message: "Test alert sent" });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+// Start cron if you want background checks (set enabled true/false)
+//startDailyOutingChecker(true);
+
+// Optionally verify mailer on server start (catch but don't crash)
+verifyMailer().catch((e) => {
+  console.warn("Mailer verification failed on startup:", e.message);
+});
+async function testEmail() {
+  const user = await User.findOne(); // find any user
+  if (!user) {
+    console.log("❌ No users in DB yet!");
+    return;
+  }
+  await sendManualAlert(user);
+}
+
+testEmail();
+// app.get("/dev/test-aqi-notify", async (req, res) => {
+//   try {
+//     await checkAndNotifyAQI();
+//     res.json({ ok: true, message: "AQI check executed, check console for details." });
+//   } catch (e) {
+//     console.error(e);
+//     res.status(500).json({ ok: false, error: e.message });
+//   }
+// });
