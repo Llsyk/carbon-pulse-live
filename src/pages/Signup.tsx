@@ -16,7 +16,7 @@ type HealthForm = {
   pregnant: "no" | "yes" | "";
   aqiThreshold: number;
   notifyBy: "email" | "sms" | "push";
-  outings: string[]; // times in "HH:MM" format when the user usually goes out
+  outings: string[]; // times in "HH:MM"
 };
 
 export default function Signup() {
@@ -64,7 +64,8 @@ export default function Signup() {
   }
 
   function addOutingTime() {
-    setHealth((h) => ({ ...h, outings: [...h.outings, "07:00"] }));
+    // Add an empty entry so user must pick a time -> less chance to accidentally save a default
+    setHealth((h) => ({ ...h, outings: [...h.outings, ""] }));
   }
 
   function updateOutingTime(index: number, value: string) {
@@ -99,8 +100,8 @@ export default function Signup() {
     if (health.aqiThreshold < 50 || health.aqiThreshold > 300)
       errs.push("AQI alert threshold should be between 50 and 300.");
     if (!health.notifyBy) errs.push("Please choose a notification method.");
-    // optional: ensure outing times are valid HH:MM
-    const invalidTime = health.outings.some((t) => !/^\d{2}:\d{2}$/.test(t));
+    // ensure outing times are valid HH:MM OR empty (we'll later filter empties)
+    const invalidTime = health.outings.some((t) => t !== "" && !/^\d{2}:\d{2}$/.test(t));
     if (invalidTime) errs.push("Please use valid time format (HH:MM) for outing times.");
     return errs;
   }
@@ -117,12 +118,19 @@ export default function Signup() {
     setErrors(errs);
     if (errs.length > 0) return;
 
+    // sanitize outings: remove empty strings and ensure hh:mm (take first 5 chars)
+    const sanitizedOutings = health.outings
+      .map((t) => (typeof t === "string" ? t.trim().slice(0, 5) : ""))
+      .filter((t) => /^\d{2}:\d{2}$/.test(t));
+
+    const payloadHealth = { ...health, outings: sanitizedOutings };
+
     setBusy(true);
     try {
-      // Create account in DB
+      // Create account in DB — ensure api helper sets Content-Type: application/json
       const res = await api<{ token: string; user: any }>("/api/auth/signup", {
         method: "POST",
-        body: JSON.stringify({ account, health }),
+        body: JSON.stringify({ account, health: payloadHealth }),
       });
 
       // Auto-login using returned token
@@ -130,7 +138,7 @@ export default function Signup() {
       localStorage.setItem("user", JSON.stringify(res.user));
       navigate("/"); // go to Index after signup
     } catch (err: any) {
-      setErrors([err.message || "Something went wrong. Please try again."]);
+      setErrors([err?.message || "Something went wrong. Please try again."]);
     } finally {
       setBusy(false);
     }

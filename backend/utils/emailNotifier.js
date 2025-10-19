@@ -1,204 +1,7 @@
-// // backend/utils/emailNotifier.js
-// import nodemailer from "nodemailer";
-// import axios from "axios";
-// import User from "../models/User.js";
-// import cron from "node-cron";
-
-// /**
-//  * 🔧 Create a Gmail transporter dynamically (lazy init)
-//  * Ensures .env variables are read at runtime even if this module loads early
-//  */
-// function makeTransporter() {
-//   const user = process.env.EMAIL_USER;
-//   const pass = process.env.EMAIL_PASS;
-//   if (!user || !pass) throw new Error("Missing EMAIL_USER or EMAIL_PASS in .env");
-//   return nodemailer.createTransport({
-//     host: "smtp.gmail.com",
-//     port: 465,
-//     secure: true,
-//     auth: { user, pass },
-//   });
-// }
-
-// /** ✅ Verify mailer connectivity */
-// export async function verifyMailer() {
-//   try {
-//     const transporter = makeTransporter();
-//     await transporter.verify();
-//     console.log("✅ Mailer ready (Gmail SMTP)");
-//   } catch (err) {
-//     console.error("Mailer verify failed:", err.message);
-//   }
-// }
-
-// /**
-//  * 📊 Fetch hourly AQI forecast for tomorrow from WAQI API
-//  * Returns array: [{ hour: "07:00", aqi: 110 }, ...]
-//  */
-// export async function fetchHourlyForecastForTomorrow(city) {
-//   const token = process.env.AQI_API_KEY;
-//   if (!token) {
-//     console.warn("⚠️ AQI_API_KEY not set; cannot fetch forecast");
-//     return [];
-//   }
-
-//   try {
-//     const res = await axios.get(
-//       `https://api.waqi.info/feed/${encodeURIComponent(city)}/?token=${token}`
-//     );
-//     const data = res.data?.data;
-//     if (!data) return [];
-
-//     // Many WAQI feeds include forecast.hourly.pm25[]
-//     const hourlyPM25 = data.forecast?.hourly?.pm25 || [];
-//     const tomorrow = new Date();
-//     tomorrow.setDate(tomorrow.getDate() + 1);
-//     const yyyy = tomorrow.toISOString().slice(0, 10);
-
-//     // Simplify structure
-//     const hours = hourlyPM25
-//       .filter((h) => (h.day || "").startsWith(yyyy))
-//       .map((h) => ({
-//         hour: h.hour.slice(0, 5),
-//         aqi: h.avg,
-//       }));
-
-//     return hours;
-//   } catch (err) {
-//     console.error(
-//       "❌ fetchHourlyForecastForTomorrow error:",
-//       err?.response?.data || err.message
-//     );
-//     return [];
-//   }
-// }
-
-// /** 🕐 Helper: match outing time ("07:30") with forecast hour ("07:00") */
-// function timeMatchesForecast(outTime, forecastHour) {
-//   const outHour = outTime.slice(0, 2);
-//   const fHour = forecastHour.slice(0, 2);
-//   return outHour === fHour;
-// }
-
-// /** ✉️ Internal: Send email to a user */
-// async function sendMail(user, subject, html) {
-//   const transporter = makeTransporter();
-//   const mailOptions = {
-//     from: `"CypherX AQI" <${process.env.EMAIL_USER}>`,
-//     to: user.email,
-//     subject,
-//     html,
-//   };
-//   const info = await transporter.sendMail(mailOptions);
-//   console.log(`📧 Sent to ${user.email} — messageId: ${info.messageId}`);
-//   return info;
-// }
-
-// /**
-//  * 🧠 Main function: checkAndSendOutingAlertForUser(user)
-//  * - Gets tomorrow’s hourly AQI forecast
-//  * - Compares with user.outings
-//  * - Sends email if any outing exceeds threshold
-//  */
-// export async function checkAndSendOutingAlertForUser(user) {
-//   if (!user?.health) return null;
-//   if (user.health.notifyBy !== "email") return null;
-//   if (!user.health.city || !user.health.outings?.length) return null;
-
-//   const threshold = Number(user.health.aqiThreshold ?? 100);
-//   const forecast = await fetchHourlyForecastForTomorrow(user.health.city);
-//   if (!forecast.length) return null;
-
-//   const tomorrow = new Date();
-//   tomorrow.setDate(tomorrow.getDate() + 1);
-//   const yyyy = tomorrow.toISOString().slice(0, 10);
-
-//   // Use plain object to store last notified times
-//   user.health.lastNotified = user.health.lastNotified || {};
-//   const alreadyNotified = new Set(user.health.lastNotified[yyyy] || []);
-
-//   const riskyMatches = [];
-//   for (const outTime of user.health.outings) {
-//     for (const f of forecast) {
-//       if (timeMatchesForecast(outTime, f.hour) && Number(f.aqi) > threshold) {
-//         if (!alreadyNotified.has(outTime)) {
-//           riskyMatches.push({ outing: outTime, hour: f.hour, aqi: f.aqi });
-//         }
-//       }
-//     }
-//   }
-
-//   if (!riskyMatches.length) return null;
-
-//   // Format email with AQI category colors
-//   const html = `
-//     <h2>🌫️ Air Quality Alert</h2>
-//     <p>Hi ${user.name},</p>
-//     <p>Tomorrow (${yyyy}) in <strong>${user.health.city}</strong>, AQI is forecasted to exceed your threshold of <strong>${threshold}</strong> during these times:</p>
-//     <ul>
-//       ${riskyMatches
-//         .map(
-//           (r) => `
-//         <li><b>${r.outing}</b> (${r.hour}) — AQI <b style="color:${
-//             r.aqi > 200
-//               ? "red"
-//               : r.aqi > 150
-//               ? "orangered"
-//               : r.aqi > 100
-//               ? "orange"
-//               : "green"
-//           }">${r.aqi}</b></li>
-//       `
-//         )
-//         .join("")}
-//     </ul>
-//     <p>Please consider limiting outdoor activities or wearing a mask.</p>
-//     <p>— CypherX</p>
-//   `;
-
-//   await sendMail(
-//     user,
-//     `⚠️ AQI Alert for ${user.health.city} — ${yyyy}`,
-//     html
-//   );
-
-//   // Update notified list
-//   user.health.lastNotified[yyyy] = Array.from(
-//     new Set([...alreadyNotified, ...riskyMatches.map((r) => r.outing)])
-//   );
-//   await user.save();
-
-//   return riskyMatches;
-// }
-
-// /**
-//  * ⏰ Cron: runs every morning 06:30
-//  * - Checks all users with email notifications
-//  * - Sends alerts automatically
-//  */
-// export function startDailyOutingChecker(enabled = true) {
-//   if (!enabled) return;
-//   cron.schedule("30 6 * * *", async () => {
-//     try {
-//       console.log("🔔 Running daily AQI outing checks...");
-//       const users = await User.find({ "health.notifyBy": "email" });
-//       for (const u of users) {
-//         const matches = await checkAndSendOutingAlertForUser(u);
-//         if (matches?.length) {
-//           console.log(`📨 Notified ${u.email} (${u.health.city})`, matches);
-//         }
-//       }
-//     } catch (e) {
-//       console.error("❌ Daily outing checker failed:", e.message);
-//     }
-//   });
-// }
-
 // backend/utils/emailNotifier.js
 import nodemailer from "nodemailer";
 import User from "../models/User.js";
 import cron from "node-cron";
-
 
 /**
  * 🔧 Create a Gmail transporter dynamically
@@ -228,13 +31,11 @@ export async function verifyMailer() {
 
 /** ✉️ Internal: Send email to a user */
 async function sendMail(user, subject, html) {
-  // ✅ Check if email exists
   if (!user?.email) {
     console.warn("⚠️ No email found for this user:", user?._id || "unknown user");
-    return null; // Stop execution if no email
+    return null;
   }
 
-  // Optional: basic email format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(user.email)) {
     console.warn("⚠️ Invalid email format:", user.email);
@@ -258,50 +59,227 @@ async function sendMail(user, subject, html) {
   }
 }
 
-
 /**
  * 🧪 Manual alert: send test email to user
  */
-export async function sendManualAlert(user) {
+export async function sendManualAlert(user, opts = {}) {
   if (!user?.email) {
     console.warn("⚠️ No email found for this user:", user?._id || "unknown user");
     return null;
   }
 
-  console.log("✅ User email exists:", user.email); // <-- THIS WILL LOG EMAIL
+ const userName = user.name || "User";
+const city = user.health?.city || "your city";
+const aqi = opts.aqi || 150;
+const scheduledAt = opts.scheduledAt || "your outing time";
+const threshold = user.health?.aqiThreshold || 100;
+const conditions = user.health?.conditions || [];
 
-  const html = `
-    <h2>🌫️ Test Air Quality Alert</h2>
-    <p>Hi ${user.name || "User"},</p>
-    <p>This is a manual/test alert email to verify notifications work.</p>
-    <ul>
-      <li>Time: 07:00</li>
-      <li>City: ${user.health?.city || "Test City"}</li>
-      <li>Manual AQI: 150 (for testing)</li>
-    </ul>
-    <p>— CypherX</p>
+// 🩺 Add custom advice based on health conditions
+let conditionAdvice = "";
+if (conditions.includes("asthma")) {
+  conditionAdvice += `
+    <li><strong>Asthma alert:</strong> Poor air quality can trigger asthma attacks. 
+    Please carry your inhaler and avoid strenuous outdoor activity.</li>
   `;
+}
+if (conditions.includes("allergies")) {
+  conditionAdvice += `
+    <li><strong>Allergy warning:</strong> High pollution can worsen allergy symptoms. 
+    Try to stay indoors and use an air purifier if possible.</li>
+  `;
+}
+if (!conditionAdvice) {
+  conditionAdvice = `
+    <li>Maintain hydration and limit time outdoors during high AQI levels.</li>
+  `;
+}
 
-  await sendMail(user, `⚠️ Test AQI Alert — ${user.health?.city || "Test City"}`, html);
+// 🧠 Set AQI level message
+let aqiStatus = "Moderate";
+if (aqi > 200) aqiStatus = "Very Unhealthy";
+else if (aqi > 150) aqiStatus = "Unhealthy";
+else if (aqi > 100) aqiStatus = "Sensitive";
+else if (aqi <= 100) aqiStatus = "Good";
+
+const html = `
+  <div style="font-family: Arial, sans-serif; color: #333;">
+    <h2 style="color: #d9534f;">🌫️ Air Quality Alert — Stay Safe, ${userName}!</h2>
+
+    <p>Dear ${userName},</p>
+
+    <p>
+      We’ve detected that the air quality in <strong>${city}</strong> is currently 
+      at <strong>${aqi}</strong> AQI (<strong>${aqiStatus}</strong> level), 
+      which is above your preferred threshold of ${threshold}.
+      Since you’re planning to go out around <strong>${scheduledAt}</strong>, 
+      please take extra care.
+    </p>
+
+    <p><strong>Health-specific recommendations:</strong></p>
+    <ul>
+      ${conditionAdvice}
+      <li>Always wear a protective mask (N95/KN95) when outdoors.</li>
+      <li>Keep windows closed to reduce indoor air pollution.</li>
+      <li>Check AQI updates frequently before your outings.</li>
+    </ul>
+
+    <p>
+      <em>Your wellbeing is our top priority. Please stay cautious and take care of yourself during poor air conditions.</em>
+    </p>
+
+    <p>Warm regards,<br>
+    <strong>CypherX Health Monitor</strong></p>
+  </div>
+`;
+
+
+
+  await sendMail(user, `⚠️ AQI Alert — ${user.health?.city || "Test City"}`, html);
   console.log(`✅ Manual alert sent to ${user.email}`);
   return true;
 }
 
+/**
+ * Outing scheduler management
+ *
+ * We'll keep an in-memory map of cron jobs for each user so we can cancel/reschedule.
+ * NOTE: In-memory map is fine for single server. For horizontal scaling you'd persist schedules elsewhere.
+ */
+const userCronJobs = new Map(); // userId => [cronJob, cronJob, ...]
+
+/** Helper: parse HH:MM string to {hour, minute} or null */
+function parseHHMM(hhmm) {
+  if (!hhmm || typeof hhmm !== "string") return null;
+  const m = hhmm.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
 
 /**
- * ⏰ Optional: cron to send test email to all email users
+ * Schedule outing alerts for a single user.
+ * Cancels any existing jobs for that user first.
+ *
+ * - user: mongoose document or object with _id and health.outings (array of "HH:MM")
+ */
+export function scheduleOutingAlertsForUser(user) {
+  if (!user || !user._id) {
+    console.warn("scheduleOutingAlertsForUser: invalid user", user);
+    return;
+  }
+  const userId = String(user._id);
+
+  // Cancel any existing jobs for this user
+  cancelOutingAlertsForUser(userId);
+
+  const outings = Array.isArray(user.health?.outings) ? user.health.outings : [];
+  const jobs = [];
+
+  outings.forEach((timeStr) => {
+    const parsed = parseHHMM(timeStr);
+    if (!parsed) {
+      console.warn(`Invalid outing time for user ${userId}:`, timeStr);
+      return;
+    }
+    const { hour, minute } = parsed;
+    // cron format: minute hour day month dayOfWeek
+    const cronExpr = `${minute} ${hour} * * *`;
+    const job = cron.schedule(
+      cronExpr,
+      async () => {
+        try {
+          console.log(`🔔 Running scheduled outing alert for user ${userId} at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
+          // Refresh user from DB in case data changed (ensure latest email etc.)
+          const freshUser = await User.findById(userId);
+          if (!freshUser) {
+            console.warn("User not found when running scheduled job:", userId);
+            return;
+          }
+          await sendManualAlert(freshUser, { scheduledAt: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}` });
+        } catch (e) {
+          console.error("Error in scheduled outing alert:", e?.message || e);
+        }
+      },
+      {
+        scheduled: true,
+        timezone: "Asia/Yangon",
+      }
+    );
+    jobs.push(job);
+    console.log(`Scheduled outing for user ${userId} at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} (cron: ${cronExpr})`);
+  });
+
+  if (jobs.length) userCronJobs.set(userId, jobs);
+  return jobs;
+}
+
+/** Cancel all scheduled outing jobs for a given user id */
+export function cancelOutingAlertsForUser(userId) {
+  if (!userId) return;
+  const existing = userCronJobs.get(String(userId));
+  if (!existing) return;
+  existing.forEach((j) => {
+    try {
+      j.stop();
+    } catch (e) {
+      console.warn("Error stopping cron job:", e?.message || e);
+    }
+  });
+  userCronJobs.delete(String(userId));
+  console.log(`Cancelled ${existing.length} outing job(s) for user ${userId}`);
+}
+
+/**
+ * Start schedules for all users on startup.
+ * Scans DB for users that use email notifications and have outings.
+ */
+export async function startAllOutingSchedules() {
+  try {
+    const users = await User.find({ "health.notifyBy": "email" });
+    console.log(`Scheduling outings for ${users.length} users...`);
+    for (const u of users) {
+      if (Array.isArray(u.health?.outings) && u.health.outings.length > 0) {
+        scheduleOutingAlertsForUser(u);
+      }
+    }
+    console.log("✅ Completed scheduling user outings.");
+  } catch (e) {
+    console.error("Failed to schedule user outings:", e?.message || e);
+  }
+}
+
+/**
+ * Optional: Start a single daily cron that sends a test alert to all email users (kept for backward compatibility)
  */
 export function startDailyManualAlert(enabled = false) {
   if (!enabled) return;
-  cron.schedule("30 6 * * *", async () => {
-    try {
-      console.log("🔔 Sending manual alerts to all users...");
-      const users = await User.find({ "health.notifyBy": "email" });
-      for (const u of users) {
-        await sendManualAlert(u);
+  cron.schedule(
+    "30 6 * * *", // 06:30 Asia/Yangon
+    async () => {
+      try {
+        console.log("🔔 Sending daily manual alerts to all users...");
+        const users = await User.find({ "health.notifyBy": "email" });
+        for (const u of users) {
+          await sendManualAlert(u, { scheduledAt: "06:30" });
+        }
+      } catch (e) {
+        console.error("❌ Daily manual alert failed:", e.message);
       }
-    } catch (e) {
-      console.error("❌ Daily manual alert failed:", e.message);
-    }
-  });
+    },
+    { timezone: "Asia/Yangon" }
+  );
 }
+
+// Export existing API plus new scheduling functions
+export default {
+  sendManualAlert,
+  verifyMailer,
+  startDailyManualAlert,
+  scheduleOutingAlertsForUser,
+  cancelOutingAlertsForUser,
+  startAllOutingSchedules,
+};

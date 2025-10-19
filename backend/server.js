@@ -1,3 +1,4 @@
+// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -7,23 +8,21 @@ import jwt from "jsonwebtoken";
 import User from "./models/User.js";
 import requireAuth from "./middleware/requireAuth.js";
 
-
-
+// email notifier + scheduler functions
+import emailNotifier, {
+  scheduleOutingAlertsForUser,
+  startAllOutingSchedules,
+  verifyMailer,
+  sendManualAlert,
+  cancelOutingAlertsForUser,
+} from "./utils/emailNotifier.js";
 
 dotenv.config();
 
-// ... other imports ...
-
-
-//import { verifyMailer, checkAndSendOutingAlertForUser, startDailyOutingChecker } from "./utils/emailNotifier.js";
-// import { checkAndNotifyAQI } from "./utils/aqiNotifier.js";
-import { sendManualAlert, verifyMailer, startDailyManualAlert } from "./utils/emailNotifier.js";
-
 console.log("DEBUG EMAIL_USER:", process.env.EMAIL_USER);
 console.log("DEBUG EMAIL_PASS:", process.env.EMAIL_PASS ? "Loaded ✅" : "Missing ❌");
+
 const app = express();
-
-
 
 // --- CORS: allow your frontend origins (8080 + 127.0.0.1) ---
 app.use(
@@ -31,14 +30,13 @@ app.use(
     origin: [
       "http://localhost:8080",
       "http://127.0.0.1:8080",
-      // "http://192.168.100.24:8080", // add if you open from LAN device
+      // add LAN origin if needed
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-// ⛔️ remove: app.options("*", cors());
 
 app.use(express.json());
 
@@ -49,7 +47,42 @@ if (!JWT_SECRET) throw new Error("JWT_SECRET missing");
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => console.log("✅ MongoDB connected"))
+  .then(async () => {
+    console.log("✅ MongoDB connected");
+
+    // verify mailer connectivity
+    try {
+      await verifyMailer();
+    } catch (e) {
+      console.warn("Mailer verification failed on startup:", e?.message || e);
+    }
+
+    // schedule existing users' outings
+    try {
+      await startAllOutingSchedules();
+    } catch (e) {
+      console.error("Failed to start outing schedules:", e?.message || e);
+    }
+
+    // Optionally send a single test email on startup if you explicitly enable it
+    // Set SEND_STARTUP_TEST_EMAIL=true in your .env to enable (will send to first user found)
+    if (process.env.SEND_STARTUP_TEST_EMAIL === "true") {
+      try {
+        const anyUser = await User.findOne();
+        if (anyUser) {
+          console.log("Sending startup test email to", anyUser.email);
+          await sendManualAlert(anyUser, { scheduledAt: "startup-test" });
+        } else {
+          console.log("No users in DB to send startup test email.");
+        }
+      } catch (e) {
+        console.error("Startup test email failed:", e?.message || e);
+      }
+    }
+
+    // start listening after DB + scheduler are ready
+    app.listen(PORT, () => console.log(`🚀 API on http://localhost:${PORT}`));
+  })
   .catch((e) => {
     console.error("❌ Mongo error", e);
     process.exit(1);
@@ -65,8 +98,11 @@ function makeToken(user) {
 // --- Routes ---
 app.get("/", (req, res) => res.send("AQI API OK"));
 
+// Signup route (schedules outings for the new user)
 app.post("/api/auth/signup", async (req, res) => {
   try {
+    console.log(">>> Incoming signup body:", JSON.stringify(req.body, null, 2));
+
     const { account, health } = req.body || {};
     const { name, email, password, confirm } = account || {};
 
@@ -80,19 +116,36 @@ app.post("/api/auth/signup", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const rawOutings = Array.isArray(health?.outings) ? health.outings : [];
+    const outings = rawOutings
+      .map((t) => (typeof t === "string" ? t.trim().slice(0, 5) : ""))
+      .filter((t) => /^\d{2}:\d{2}$/.test(t));
+
+    const healthToSave = {
+      city: health?.city ?? "",
+      conditions: Array.isArray(health?.conditions) ? health.conditions : [],
+      smoker: health?.smoker ?? "",
+      pregnant: health?.pregnant ?? "",
+      aqiThreshold: Number(health?.aqiThreshold ?? 100),
+      notifyBy: health?.notifyBy ?? "email",
+      outings,
+    };
+
     const user = await User.create({
       name,
       email,
       passwordHash,
-      health: {
-        city: health?.city ?? "",
-        conditions: health?.conditions ?? [],
-        smoker: health?.smoker ?? "",
-        pregnant: health?.pregnant ?? "",
-        aqiThreshold: Number(health?.aqiThreshold ?? 100),
-        notifyBy: health?.notifyBy ?? "email",
-      },
+      health: healthToSave,
     });
+
+    console.log("<<< Saved user.health.outings:", user.health?.outings);
+
+    // Schedule outings for this new user (will cancel any existing scheduled jobs first)
+    try {
+      scheduleOutingAlertsForUser(user);
+    } catch (err) {
+      console.warn("Failed to schedule outings for new user:", err?.message || err);
+    }
 
     const token = makeToken(user);
     return res.status(201).json({
@@ -106,11 +159,12 @@ app.post("/api/auth/signup", async (req, res) => {
       },
     });
   } catch (e) {
-    console.error(e);
+    console.error("Signup error:", e);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
+// Login route
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
@@ -140,17 +194,16 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 API on http://localhost:${PORT}`));
-// Test route for sending AQI email
-// Optional: test endpoint for the logged-in user (secure)
+// Protected: send a manual/test email to the authenticated user
 app.post("/api/notify/email", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const sent = await sendEmail(user);
+    // Use sendManualAlert (previously sendEmail was used but not defined)
+    const sent = await sendManualAlert(user, { scheduledAt: "manual-test" });
     if (!sent) {
-      return res.json({ message: "No email sent (missing email?)" });
+      return res.json({ message: "No email sent (missing email or sending failed)" });
     }
     return res.json({ message: "Test alert sent" });
   } catch (e) {
@@ -159,30 +212,14 @@ app.post("/api/notify/email", requireAuth, async (req, res) => {
   }
 });
 
+/*
+  IMPORTANT:
+  - If you have a route that updates user's outings, call scheduleOutingAlertsForUser(user)
+    after saving the user so the jobs are refreshed.
+  - If you delete a user or disable notifications, call cancelOutingAlertsForUser(userId)
+    to stop scheduled jobs.
+  - This scheduling uses an in-memory map (suitable for single-instance deployments).
+    For multiple instances you should centralize scheduling (e.g., Redis queue / worker).
+*/
 
-// Start cron if you want background checks (set enabled true/false)
-//startDailyOutingChecker(true);
-
-// Optionally verify mailer on server start (catch but don't crash)
-verifyMailer().catch((e) => {
-  console.warn("Mailer verification failed on startup:", e.message);
-});
-async function testEmail() {
-  const user = await User.findOne(); // find any user
-  if (!user) {
-    console.log("❌ No users in DB yet!");
-    return;
-  }
-  await sendManualAlert(user);
-}
-
-testEmail();
-// app.get("/dev/test-aqi-notify", async (req, res) => {
-//   try {
-//     await checkAndNotifyAQI();
-//     res.json({ ok: true, message: "AQI check executed, check console for details." });
-//   } catch (e) {
-//     console.error(e);
-//     res.status(500).json({ ok: false, error: e.message });
-//   }
-// });
+export default app;
