@@ -1,14 +1,23 @@
 import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-/** NOTE:
- * You already set Leaflet default marker icons globally in main.tsx:
- * L.Icon.Default.mergeOptions({ iconRetinaUrl, iconUrl, shadowUrl });
- * So we don't repeat that here to avoid conflicts.
- */
+// Fix Leaflet default icon issue in React / Vite / Next.js
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
+
+// Component to recenter map when props change
 interface MapRecenterProps {
   center: LatLngExpression;
   zoom: number;
@@ -22,13 +31,7 @@ const MapRecenter = ({ center, zoom }: MapRecenterProps) => {
   return null;
 };
 
-interface CurrentLocationMapProps {
-  countryCode?: string;
-  /** Optional current user location (if you already have it). If not provided,
-   * the component just shows the country view. */
-  userLocation?: LatLngExpression | null;
-}
-
+// Default coordinates per country
 const COUNTRY_COORDS: Record<string, { center: LatLngExpression; zoom: number }> = {
   ALL: { center: [10, 105], zoom: 5 },
   MM: { center: [21.9162, 95.956], zoom: 6 },
@@ -43,29 +46,49 @@ const COUNTRY_COORDS: Record<string, { center: LatLngExpression; zoom: number }>
   BN: { center: [4.5353, 114.7277], zoom: 9 },
 };
 
-const CurrentLocationMap = ({ countryCode = "ALL", userLocation = null }: CurrentLocationMapProps) => {
+interface CurrentLocationMapProps {
+  countryCode?: string;
+  lat?: number;
+  lng?: number;
+}
+
+export default function CurrentLocationMap({
+  countryCode = "ALL",
+  lat,
+  lng,
+}: CurrentLocationMapProps) {
   const mapConfig = COUNTRY_COORDS[countryCode] || COUNTRY_COORDS.ALL;
 
+  // Get user location from props first, fallback to localStorage
+  const storedUser = localStorage.getItem("user");
+  const user = storedUser ? JSON.parse(storedUser) : null;
+
+  const userLocation: LatLngExpression | null =
+    lat && lng ? [lat, lng] : user?.health?.lat && user?.health?.lng ? [user.health.lat, user.health.lng] : null;
+
+  const zoomLevel = userLocation ? 12 : mapConfig.zoom;
+
   return (
-    <div
-      id="map-current-location"
-      className="h-full w-full rounded-lg overflow-hidden shadow-card border border-border"
-      aria-label="Map showing current location"
-    >
-      <MapContainer center={mapConfig.center} zoom={mapConfig.zoom} className="h-full w-full" scrollWheelZoom>
+    <div className="h-full w-full rounded-lg overflow-hidden shadow-card border border-border">
+      <MapContainer
+        center={userLocation || mapConfig.center}
+        zoom={zoomLevel}
+        className="h-full w-full"
+        scrollWheelZoom
+      >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution="&copy; OpenStreetMap"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapRecenter center={mapConfig.center} zoom={mapConfig.zoom} />
+
+        <MapRecenter center={userLocation || mapConfig.center} zoom={zoomLevel} />
+
         {userLocation && (
           <Marker position={userLocation}>
-            <Popup>Your Current Location</Popup>
+            <Popup>Your Registered Location</Popup>
           </Marker>
         )}
       </MapContainer>
     </div>
   );
-};
-
-export default CurrentLocationMap;
+}

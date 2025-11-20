@@ -2,22 +2,61 @@ import { useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 
-type AccountForm = {
-  name: string;
-  email: string;
-  password: string;
-  confirm: string;
+// ASEAN dataset
+const ASEAN_DATA: Record<string, { city: string; lat: number; lng: number }[]> = {
+  Myanmar: [
+    { city: "Yangon", lat: 16.8409, lng: 96.1735 },
+    { city: "Mandalay", lat: 21.9588, lng: 96.0891 },
+    { city: "Naypyidaw", lat: 19.7633, lng: 96.0785 },
+    { city: "Taunggyi", lat: 20.7905, lng: 97.038 },
+    { city: "Mawlamyine", lat: 16.474, lng: 97.628 },
+  ],
+  Thailand: [
+    { city: "Bangkok", lat: 13.7563, lng: 100.5018 },
+    { city: "Chiang Mai", lat: 18.7883, lng: 98.9853 },
+    { city: "Phuket", lat: 7.8804, lng: 98.3923 },
+    { city: "Pattaya", lat: 12.9236, lng: 100.8825 },
+  ],
+  Vietnam: [
+    { city: "Hanoi", lat: 21.0278, lng: 105.8342 },
+    { city: "Ho Chi Minh City", lat: 10.8231, lng: 106.6297 },
+    { city: "Da Nang", lat: 16.0544, lng: 108.2022 },
+    { city: "Hue", lat: 16.4637, lng: 107.5909 },
+  ],
+  Laos: [
+    { city: "Vientiane", lat: 17.9757, lng: 102.6331 },
+    { city: "Luang Prabang", lat: 19.8836, lng: 102.1343 },
+    { city: "Pakse", lat: 15.1177, lng: 105.8183 },
+  ],
+  Cambodia: [
+    { city: "Phnom Penh", lat: 11.5564, lng: 104.9282 },
+    { city: "Siem Reap", lat: 13.355, lng: 103.8552 },
+    { city: "Battambang", lat: 13.0957, lng: 103.2022 },
+  ],
+  Malaysia: [
+    { city: "Kuala Lumpur", lat: 3.139, lng: 101.6869 },
+    { city: "Penang", lat: 5.4164, lng: 100.3327 },
+    { city: "Johor Bahru", lat: 1.4927, lng: 103.7414 },
+    { city: "Kota Kinabalu", lat: 5.9804, lng: 116.0735 },
+  ],
+  Singapore: [{ city: "Singapore", lat: 1.3521, lng: 103.8198 }],
+  Indonesia: [
+    { city: "Jakarta", lat: -6.2088, lng: 106.8456 },
+    { city: "Surabaya", lat: -7.2575, lng: 112.7521 },
+    { city: "Bali (Denpasar)", lat: -8.65, lng: 115.2167 },
+    { city: "Bandung", lat: -6.9175, lng: 107.6191 },
+  ],
+  Philippines: [
+    { city: "Manila", lat: 14.5995, lng: 120.9842 },
+    { city: "Cebu City", lat: 10.3157, lng: 123.8854 },
+    { city: "Davao City", lat: 7.1907, lng: 125.4553 },
+  ],
+  Brunei: [
+    { city: "Bandar Seri Begawan", lat: 4.9031, lng: 114.9398 },
+    { city: "Kuala Belait", lat: 4.5833, lng: 114.2 },
+  ],
 };
 
-type HealthForm = {
-  city: string;
-  conditions: string[];
-  smoker: "no" | "former" | "yes" | "";
-  pregnant: "no" | "yes" | "";
-  aqiThreshold: number;
-  notifyBy: "email" | "sms" | "push";
-  outings: string[]; // times in "HH:MM"
-};
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -25,14 +64,15 @@ export default function Signup() {
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
-  const [account, setAccount] = useState<AccountForm>({
+  const [account, setAccount] = useState({
     name: "",
     email: "",
     password: "",
     confirm: "",
   });
 
-  const [health, setHealth] = useState<HealthForm>({
+  const [health, setHealth] = useState({
+    country: "",
     city: "",
     conditions: [],
     smoker: "",
@@ -41,6 +81,8 @@ export default function Signup() {
     notifyBy: "email",
     outings: [], // start empty; user can add times
   });
+
+  const cities = health.country? ASEAN_DATA[health.country] || [] : [];
 
   const passwordScore = useMemo(() => {
     const p = account.password;
@@ -113,36 +155,58 @@ export default function Signup() {
   }
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const errs = step === 1 ? validateStep1() : validateStep2();
-    setErrors(errs);
-    if (errs.length > 0) return;
+  e.preventDefault();
 
-    // sanitize outings: remove empty strings and ensure hh:mm (take first 5 chars)
-    const sanitizedOutings = health.outings
-      .map((t) => (typeof t === "string" ? t.trim().slice(0, 5) : ""))
-      .filter((t) => /^\d{2}:\d{2}$/.test(t));
+  const errs = step === 1 ? validateStep1() : validateStep2();
+  setErrors(errs);
+  if (errs.length > 0) return;
 
-    const payloadHealth = { ...health, outings: sanitizedOutings };
-
-    setBusy(true);
-    try {
-      // Create account in DB — ensure api helper sets Content-Type: application/json
-      const res = await api<{ token: string; user: any }>("/api/auth/signup", {
-        method: "POST",
-        body: JSON.stringify({ account, health: payloadHealth }),
-      });
-
-      // Auto-login using returned token
-      localStorage.setItem("token", res.token);
-      localStorage.setItem("user", JSON.stringify(res.user));
-      navigate("/"); // go to Index after signup
-    } catch (err: any) {
-      setErrors([err?.message || "Something went wrong. Please try again."]);
-    } finally {
-      setBusy(false);
-    }
+  if (!health.country) {
+    setErrors(["Please select a country."]);
+    return;
   }
+  if (!health.city) {
+    setErrors(["Please select a city."]);
+    return;
+  }
+
+  // Find city data
+  const cityData = ASEAN_DATA[health.country]?.find((c) => c.city === health.city);
+  if (!cityData) {
+    setErrors(["City data not found."]);
+    return;
+  }
+
+  // Sanitize outings
+  const sanitizedOutings = health.outings
+    .map((t) => t?.trim().slice(0, 5) || "")
+    .filter((t) => /^\d{2}:\d{2}$/.test(t));
+
+  const payloadHealth = {
+    ...health,
+    lat: cityData.lat,
+    lng: cityData.lng,
+    outings: sanitizedOutings,
+  };
+
+  setBusy(true);
+  try {
+    const res = await api<{ token: string; user: any }>("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ account, health: payloadHealth }),
+    });
+
+    localStorage.setItem("token", res.token);
+    localStorage.setItem("user", JSON.stringify(res.user));
+    navigate("/");
+  } catch (err: any) {
+    setErrors([err?.message || "Something went wrong."]);
+  } finally {
+    setBusy(false);
+  }
+}
+
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 to-white flex items-center justify-center p-6">
@@ -244,16 +308,44 @@ export default function Signup() {
         {step === 2 && (
           <section className="space-y-5">
             <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-700">Primary City / Location</label>
-              <input
-                className="border rounded-xl px-4 py-2 outline-none focus:ring-4 ring-sky-100"
-                placeholder="e.g., Yangon"
-                value={health.city}
-                onChange={(e) => setHealth((h) => ({ ...h, city: e.target.value }))}
-                autoComplete="address-level2"
-              />
+              <label className="text-sm font-medium text-slate-700">Country</label>
+                <select
+                  className="border rounded-xl px-4 py-2 outline-none focus:ring-4 ring-sky-100"
+                  value={health.country}
+                  onChange={(e) =>
+                    setHealth((h) => ({
+                      ...h,
+                      country: e.target.value,
+                      city: "", // reset city when country changes
+                    }))
+                  }
+                >
+                  <option value="">Select a country…</option>
+                  {Object.keys(ASEAN_DATA).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
             </div>
-
+            
+            <div className="grid gap-2">
+                <label className="text-sm font-medium text-slate-700">City</label>
+                <select
+                  className="border rounded-xl px-4 py-2 outline-none focus:ring-4 ring-sky-100"
+                  value={health.city}
+                  onChange={(e) => setHealth((h) => ({ ...h, city: e.target.value }))}
+                  disabled={!health.country}
+                >
+                  <option value="">Select a city…</option>
+                  {cities.map((c) => (
+                    <option key={c.city} value={c.city}>
+                      {c.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            
             <div className="grid gap-2">
               <span className="text-sm font-medium text-slate-700">Health Conditions (select all that apply)</span>
               <div className="grid grid-cols-2 gap-2">

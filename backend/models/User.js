@@ -1,18 +1,21 @@
-// backend/models/User.js
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 const HealthSchema = new mongoose.Schema({
-  city: String,
-  conditions: [String],
-  smoker: String,
-  pregnant: String,
+  country: { type: String, required: true },
+  city: { type: String, required: true },
+  lat: { type: Number, required: true },
+  lng: { type: Number, required: true },
+  conditions: { type: [String], default: [] },
+  smoker: { type: String, enum: ["no", "former", "yes", ""], default: "" },
+  pregnant: { type: String, enum: ["no", "yes", ""], default: "" },
   aqiThreshold: { type: Number, default: 100 },
   notifyBy: { type: String, enum: ["email", "sms", "push"], default: "email" },
-  outings: { type: [String], default: [] }, // ["07:30","18:00"]
+  outings: { type: [String], default: [] },
   lastNotified: {
-    // keep a per-date map to avoid duplicate per-day notifications
     type: Map,
-    of: [String], // list of outing times already notified for a given date (YYYY-MM-DD -> ["07:30"])
+    of: [String],
+    default: {},
   },
 });
 
@@ -21,9 +24,15 @@ const UserSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
-    health: HealthSchema,
+    health: { type: HealthSchema, required: true }, // <-- mark as required
   },
   { timestamps: true }
 );
+
+// Optional: virtual for setting password
+UserSchema.virtual("password").set(function (password) {
+  this._password = password;
+  this.passwordHash = bcrypt.hashSync(password, 10);
+});
 
 export default mongoose.model("User", UserSchema);

@@ -24,7 +24,23 @@ interface MetricsData {
   timeseries: Array<{ month: string; energy: number; transport: number; waste: number }>;
 }
 
+interface User{
+  id: string;
+  name: string;
+  email: string;
+  health:{
+    city?: string;
+    country?: string;
+    lat?: number;
+    lng?: number;
+    aqiThreshold?: number;
+    notifyBy?: string;
+    outings?: string;
+  };
+}
+
 export default function Index() {
+  const [user, setUser] = useState<User | null>(null);
   const [countries, setCountries] = useState<Country[]>([]);
   const [years, setYears] = useState<number[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<string>("ALL");
@@ -33,7 +49,11 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
-  // Load countries and years
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) setUser(JSON.parse(storedUser));
+  }, []);
+
   useEffect(() => {
     const loadInit = async () => {
       try {
@@ -87,32 +107,22 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* --- LIGHT BLUE NAVBAR --- */}
-      {/* <nav className="sticky top-0 z-50 bg-blue-600 text-white shadow-md">
-        <div className="container mx-auto flex items-center justify-between px-4 py-3">
-          <h1 className="font-semibold text-lg tracking-wide">
-            ☁️ Air Quality Map
-          </h1>
-          <div className="flex gap-3">
-            <Button asChild variant="secondary" className="bg-white text-blue-700 hover:bg-blue-50">
-              <a href="/">Home</a>
-            </Button>
-            <Button asChild variant="secondary" className="bg-white text-blue-700 hover:bg-blue-50">
-              <a href="/explorer">Map</a>
-            </Button>
-          </div>
-        </div>
-      </nav> */}
+      {/* --- NAVBAR --- */}
+      
 
       <main className="container mx-auto px-4 py-8 space-y-8">
-        {/* --- TOP ROW: MAP + SIMPLE WELCOME CARD --- */}
+        {/* --- TOP ROW: MAP + WELCOME CARD --- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Map */}
-          <div className="h-[420px] lg:h-[500px] rounded-lg border border-border shadow-card overflow-hidden">
-            <CurrentLocationMap countryCode={selectedCountry} />
+          <div className="w-full h-[420px] lg:h-[500px] rounded-lg border border-border shadow-card overflow-hidden relative z-0 bg-white">
+            <CurrentLocationMap
+              countryCode={selectedCountry}
+              lat={user?.health?.lat}
+              lng={user?.health?.lng}
+            />
           </div>
 
-          {/* Simple Welcome Card */}
+          {/* Welcome Card */}
           <div
             className="h-[420px] lg:h-[500px] rounded-lg border border-border shadow-card flex flex-col items-center justify-center text-center p-6"
             style={{
@@ -120,12 +130,9 @@ export default function Index() {
                 "linear-gradient(180deg, hsl(210 80% 97%) 0%, hsl(210 70% 94%) 100%)",
             }}
           >
-            {/* Large Brand Image */}
             <div className="w-56 h-56 mb-4 rounded-xl overflow-hidden border border-blue-200 shadow-md bg-white">
               <BrandLogo />
             </div>
-
-            {/* Simple Text */}
             <h2 className="text-xl font-semibold text-blue-900">
               Welcome to Your Air Quality Map
             </h2>
@@ -133,8 +140,6 @@ export default function Index() {
               Track AQI and pollutants across ASEAN. Choose filters below or tap
               the map to explore cities and recent trends.
             </p>
-
-            {/* Explore Map Button */}
             <Button
               asChild
               className="mt-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full px-5 py-2"
@@ -147,58 +152,47 @@ export default function Index() {
           </div>
         </div>
 
-        {/* --- FILTER CONTROLS --- */}
-        <section
-          className="bg-card rounded-lg border border-border shadow-card p-6"
-          aria-labelledby="filters"
-        >
-          <h2 id="filters" className="sr-only">
-            Filters
-          </h2>
+        {/* --- FILTERS --- */}
+        <section className="bg-card rounded-lg border border-border shadow-card p-6" aria-labelledby="filters">
+          <h2 id="filters" className="sr-only">Filters</h2>
           <div className="flex flex-col sm:flex-row gap-4 items-end">
+            {/* Country */}
             <div className="flex-1 space-y-2">
-              <label htmlFor="select-country" className="text-sm font-medium text-foreground">
-                Country
-              </label>
+              <label htmlFor="select-country" className="text-sm font-medium text-foreground">Country</label>
               <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                <SelectTrigger id="select-country" className="w-full" aria-label="Select country">
+                <SelectTrigger id="select-country" className="w-full">
                   <SelectValue placeholder="Select country" />
                 </SelectTrigger>
                 <SelectContent>
                   {countries.map((country) => (
-                    <SelectItem key={country.code} value={country.code}>
-                      {country.name}
-                    </SelectItem>
+                    <SelectItem key={country.code} value={country.code}>{country.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
+            {/* Year */}
             <div className="flex-1 space-y-2">
-              <label htmlFor="select-year" className="text-sm font-medium text-foreground">
-                Year
-              </label>
+              <label htmlFor="select-year" className="text-sm font-medium text-foreground">Year</label>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger id="select-year" className="w-full" aria-label="Select year">
+                <SelectTrigger id="select-year" className="w-full">
                   <SelectValue placeholder="Select year" />
                 </SelectTrigger>
                 <SelectContent>
                   {years.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
+            {/* Apply / Retry */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <Button
                 variant="default"
                 className="bg-blue-600 hover:bg-blue-700 text-white"
                 disabled={isLoading}
                 onClick={() => fetchMetrics(selectedCountry, selectedYear)}
-                aria-label="Apply filters"
               >
                 {isLoading ? "Loading..." : "Apply"}
               </Button>
@@ -215,13 +209,11 @@ export default function Index() {
           </div>
 
           {loadErr && (
-            <p className="mt-3 text-sm text-destructive" role="alert">
-              {loadErr}
-            </p>
+            <p className="mt-3 text-sm text-destructive" role="alert">{loadErr}</p>
           )}
         </section>
 
-        {/* --- MAIN DASHBOARD --- */}
+        {/* --- DASHBOARD --- */}
         {metrics ? (
           <section className="space-y-6" aria-labelledby="analysis">
             <h2 id="analysis" className="sr-only">Analysis</h2>
@@ -255,24 +247,9 @@ export default function Index() {
 
             {/* Summary Tiles */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <SummaryTile
-                title="PM2.5"
-                value={metrics.categories.energy}
-                target={metrics.targets.energy}
-                unit="µg/m³"
-              />
-              <SummaryTile
-                title="NO₂"
-                value={metrics.categories.transport}
-                target={metrics.targets.transport}
-                unit="ppb"
-              />
-              <SummaryTile
-                title="O₃"
-                value={metrics.categories.waste}
-                target={metrics.targets.waste}
-                unit="ppb"
-              />
+              <SummaryTile title="PM2.5" value={metrics.categories.energy} target={metrics.targets.energy} unit="µg/m³"/>
+              <SummaryTile title="NO₂" value={metrics.categories.transport} target={metrics.targets.transport} unit="ppb"/>
+              <SummaryTile title="O₃" value={metrics.categories.waste} target={metrics.targets.waste} unit="ppb"/>
             </div>
 
             {/* Charts */}
