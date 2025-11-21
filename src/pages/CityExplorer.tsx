@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import KPICard from "@/components/KPICard";
 import SummaryTile from "@/components/SummaryTile";
 
 /** ---------------- Types ---------------- */
-type Status = "normal" | "moderate" | "bad" | "worst";
+type Status = "good" | "fair" | "moderate" | "poor" | "very_poor";
 
 type City = {
   id: string;
@@ -24,6 +24,7 @@ type City = {
 };
 
 /** ---------------- Demo data: ASEAN-10 (unchanged) ---------------- */
+
 const ASEAN_CITIES: City[] = [
   { id: "YGN", name: "Yangon", country: "Myanmar", lat: 16.8661, lng: 96.1951,
     metrics: { aqi: 128, pm25: 42, no2: 25, o3: 31, target: { pm25: 25, no2: 40, o3: 60 },
@@ -87,20 +88,22 @@ const mapBounds: [[number, number], [number, number]] = [
 function clamp(n: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, n)); }
 
 function getStatusFromAQI(aqi: number): Status {
-  if (aqi <= 50) return "normal";
-  if (aqi <= 100) return "moderate";
-  if (aqi <= 150) return "bad";
-  return "worst";
+  if (aqi == 1) return "good";
+  if (aqi == 2) return "fair";
+  if (aqi == 3) return "moderate";
+  if (aqi == 4) return "poor";
+  return "very_poor";
 }
 
 const statusLabel: Record<Status, string> = {
-  normal: "Normal",
+  good: "Good",
+  fair: "Fair",
   moderate: "Moderate",
-  bad: "Bad",
-  worst: "Worst",
+  poor: "Poor",
+  very_poor: "Very Poor"
 };
 
-const toneClasses: Record<Status, { ring: string; bg: string; text: string; chip: string; marker: { stroke: string; fill: string } }> = {
+/*const toneClasses: Record<Status, { ring: string; bg: string; text: string; chip: string; marker: { stroke: string; fill: string } }> = {
   normal:   { ring: "ring-emerald-300", bg: "bg-emerald-50", text: "text-emerald-800", chip: "bg-emerald-100 text-emerald-800",
               marker: { stroke: "hsl(142 70% 30%)", fill: "hsl(142 70% 42%)" } },
   moderate: { ring: "ring-amber-300",   bg: "bg-amber-50",   text: "text-amber-800",   chip: "bg-amber-100 text-amber-800",
@@ -109,46 +112,86 @@ const toneClasses: Record<Status, { ring: string; bg: string; text: string; chip
               marker: { stroke: "hsl(24 90% 38%)",  fill: "hsl(24 90% 49%)" } },
   worst:    { ring: "ring-rose-300",    bg: "bg-rose-50",    text: "text-rose-800",    chip: "bg-rose-100 text-rose-800",
               marker: { stroke: "hsl(0 80% 38%)",   fill: "hsl(0 80% 46%)" } },
+};*/
+const toneClasses: Record<
+  Status,
+  { ring: string; bg: string; text: string; chip: string; marker: { stroke: string; fill: string } }
+> = {
+  good: {
+    ring: "ring-emerald-300",
+    bg: "bg-emerald-50",
+    text: "text-emerald-800",
+    chip: "bg-emerald-100 text-emerald-800",
+    marker: { stroke: "hsl(142 70% 30%)", fill: "hsl(142 70% 42%)" },
+  },
+  fair: {
+    ring: "ring-lime-300",
+    bg: "bg-lime-50",
+    text: "text-lime-800",
+    chip: "bg-lime-100 text-lime-800",
+    marker: { stroke: "hsl(80 70% 30%)", fill: "hsl(80 70% 45%)" },
+  },
+  moderate: {
+    ring: "ring-amber-300",
+    bg: "bg-amber-50",
+    text: "text-amber-800",
+    chip: "bg-amber-100 text-amber-800",
+    marker: { stroke: "hsl(38 90% 38%)", fill: "hsl(38 90% 50%)" },
+  },
+  poor: {
+    ring: "ring-orange-300",
+    bg: "bg-orange-50",
+    text: "text-orange-800",
+    chip: "bg-orange-100 text-orange-800",
+    marker: { stroke: "hsl(24 90% 38%)", fill: "hsl(24 90% 49%)" },
+  },
+  very_poor: {
+    ring: "ring-rose-300",
+    bg: "bg-rose-50",
+    text: "text-rose-800",
+    chip: "bg-rose-100 text-rose-800",
+    marker: { stroke: "hsl(0 80% 38%)", fill: "hsl(0 80% 46%)" },
+  },
 };
 
 /** Simple client-side prediction (no backend change)
  * - Peak hours (07–09 & 18–20): +15% PM2.5/NO2, +10% AQI, -5% O3.
  * - Day scenarios: 1=baseline; 2=+10% all; 3=+25% PM2.5/NO2, +15% AQI.
  */
-function predictCity(base: City, day: number, timeHHMM: string): City {
-  const [hhStr] = timeHHMM.split(":");
-  const hour = Number(hhStr || 0);
-  const peak = (hour >= 7 && hour <= 9) || (hour >= 18 && hour <= 20);
+// function predictCity(base: City, day: number, timeHHMM: string): City {
+//   const [hhStr] = timeHHMM.split(":");
+//   const hour = Number(hhStr || 0);
+//   const peak = (hour >= 7 && hour <= 9) || (hour >= 18 && hour <= 20);
 
-  const dayFactorAQI = day === 1 ? 1.0 : day === 2 ? 1.10 : 1.15;
-  const dayFactorPMNO = day === 1 ? 1.0 : day === 2 ? 1.10 : 1.25;
-  const dayFactorO3 = day === 1 ? 1.0 : day === 2 ? 1.05 : 1.10;
+//   const dayFactorAQI = day === 1 ? 1.0 : day === 2 ? 1.10 : 1.15;
+//   const dayFactorPMNO = day === 1 ? 1.0 : day === 2 ? 1.10 : 1.25;
+//   const dayFactorO3 = day === 1 ? 1.0 : day === 2 ? 1.05 : 1.10;
 
-  const aqi = Math.round(clamp(base.metrics.aqi * dayFactorAQI * (peak ? 1.10 : 1.0), 0, 500));
-  const pm25 = Math.round(base.metrics.pm25 * dayFactorPMNO * (peak ? 1.15 : 1.0));
-  const no2  = Math.round(base.metrics.no2  * dayFactorPMNO * (peak ? 1.15 : 1.0));
-  const o3   = Math.round(base.metrics.o3   * dayFactorO3  * (peak ? 0.95 : 1.0));
+//   const aqi = Math.round(clamp(base.metrics.aqi * dayFactorAQI * (peak ? 1.10 : 1.0), 0, 500));
+//   const pm25 = Math.round(base.metrics.pm25 * dayFactorPMNO * (peak ? 1.15 : 1.0));
+//   const no2  = Math.round(base.metrics.no2  * dayFactorPMNO * (peak ? 1.15 : 1.0));
+//   const o3   = Math.round(base.metrics.o3   * dayFactorO3  * (peak ? 0.95 : 1.0));
 
-  // Scale timeseries similarly (light touch; keeps trend shape)
-  const timeseries = base.metrics.timeseries.map(t => ({
-    month: t.month,
-    pm25: Math.round(t.pm25 * dayFactorPMNO * (peak ? 1.08 : 1.0)),
-    no2:  Math.round(t.no2  * dayFactorPMNO * (peak ? 1.08 : 1.0)),
-    o3:   Math.round(t.o3   * dayFactorO3  * (peak ? 0.97 : 1.0)),
-  }));
+//   // Scale timeseries similarly (light touch; keeps trend shape)
+//   const timeseries = base.metrics.timeseries.map(t => ({
+//     month: t.month,
+//     pm25: Math.round(t.pm25 * dayFactorPMNO * (peak ? 1.08 : 1.0)),
+//     no2:  Math.round(t.no2  * dayFactorPMNO * (peak ? 1.08 : 1.0)),
+//     o3:   Math.round(t.o3   * dayFactorO3  * (peak ? 0.97 : 1.0)),
+//   }));
 
-  return {
-    ...base,
-    metrics: {
-      ...base.metrics,
-      aqi,
-      pm25,
-      no2,
-      o3,
-      timeseries,
-    },
-  };
-}
+//   return {
+//     ...base,
+//     metrics: {
+//       ...base.metrics,
+//       aqi,
+//       pm25,
+//       no2,
+//       o3,
+//       timeseries,
+//     },
+//   };
+// }
 
 /** Small sparkline (unchanged) */
 function Sparkline({ series, color = "hsl(142 60% 40%)" }:{
@@ -174,11 +217,18 @@ function Sparkline({ series, color = "hsl(142 60% 40%)" }:{
 
 /** Legend overlay */
 function Legend() {
+  // const items: { label: string; tone: Status }[] = [
+  //   { label: "Normal (0–50)", tone: "normal" },
+  //   { label: "Moderate (51–100)", tone: "moderate" },
+  //   { label: "Bad (101–150)", tone: "bad" },
+  //   { label: "Worst (151+)", tone: "worst" },
+  // ];
   const items: { label: string; tone: Status }[] = [
-    { label: "Normal (0–50)", tone: "normal" },
-    { label: "Moderate (51–100)", tone: "moderate" },
-    { label: "Bad (101–150)", tone: "bad" },
-    { label: "Worst (151+)", tone: "worst" },
+    { label: "Good (1)", tone: "good" },
+    { label: "Fair (2)", tone: "fair" },
+    { label: "Moderate (3)", tone: "moderate" },
+    { label: "Poor (4)", tone: "poor" },
+    { label: "Very Poor (5)", tone: "very_poor" },
   ];
   return (
     <div className="absolute top-24 left-4 z-[1000] rounded-lg bg-white/90 backdrop-blur px-3 py-2 shadow border">
@@ -248,14 +298,29 @@ function Controls({
 
 
 /** Recommended actions (same as you asked earlier) */
+// function getAQIAction(status: Status) {
+//   switch (status) {
+//     case "normal":   return "Air quality is good. Maintain current measures; encourage active transport and outdoor activities.";
+//     case "moderate": return "Sensitive groups should limit prolonged outdoor exertion; reduce vehicle idling and dust-generating works.";
+//     case "bad":      return "Limit outdoor activities; recommend masks for all (prefer N95 for PM2.5); consider traffic and construction restrictions.";
+//     case "worst":    return "Stay indoors with filtration; mandate N95 masks outdoors; suspend outdoor events; issue public health alerts.";
+//   }
+// }
 function getAQIAction(status: Status) {
   switch (status) {
-    case "normal":   return "Air quality is good. Maintain current measures; encourage active transport and outdoor activities.";
-    case "moderate": return "Sensitive groups should limit prolonged outdoor exertion; reduce vehicle idling and dust-generating works.";
-    case "bad":      return "Limit outdoor activities; recommend masks for all (prefer N95 for PM2.5); consider traffic and construction restrictions.";
-    case "worst":    return "Stay indoors with filtration; mandate N95 masks outdoors; suspend outdoor events; issue public health alerts.";
+    case "good":
+      return "Air quality is good. Maintain current measures; encourage active transport and outdoor activities.";
+    case "fair":
+      return "Air quality is acceptable. Sensitive individuals should reduce prolonged outdoor exertion near busy roads.";
+    case "moderate":
+      return "Members of sensitive groups should limit prolonged outdoor exertion; reduce vehicle idling and dust-generating works.";
+    case "poor":
+      return "Limit outdoor activities; recommend masks for sensitive groups; consider traffic and construction restrictions.";
+    case "very_poor":
+      return "Stay indoors with filtration where possible; recommend masks outdoors; suspend outdoor events; issue public health alerts.";
   }
 }
+
 function getPollutantAlerts(city: City) {
   const alerts: string[] = [];
   const rules = [
@@ -343,7 +408,13 @@ function DetailsModal({ city, onClose }: { city: City; onClose: () => void }) {
                 { key: "O₃",    value: city.metrics.o3,    target: city.metrics.target.o3,    unit: "ppb" },
               ].map(({ key, value, target, unit }) => {
                 const ratio = value / target;
-                const st: Status = ratio <= 1 ? "normal" : ratio <= 1.2 ? "moderate" : ratio <= 1.5 ? "bad" : "worst";
+                //const st: Status = ratio <= 1 ? "normal" : ratio <= 1.2 ? "moderate" : ratio <= 1.5 ? "bad" : "worst";
+                const st: Status =
+                  ratio <= 1 ? "good" :
+                  ratio <= 1.2 ? "fair" :
+                  ratio <= 1.5 ? "moderate" :
+                  ratio <= 2 ? "poor" :
+                  "very_poor";
                 const t = toneClasses[st];
                 return (
                   <div key={key} className={`rounded-xl p-0.5 ring-1 ${t.ring}`}>
@@ -383,6 +454,8 @@ function DetailsModal({ city, onClose }: { city: City; onClose: () => void }) {
 
 /** ---------------- FULLSCREEN MAP + PREDICTION + MODAL ---------------- */
 export default function CityExplorer() {
+  const [liveCities, setLiveCities] = useState<City[]>(ASEAN_CITIES);
+  const [loading, setLoading] = useState(false);
   // UI controls (pending) and applied prediction parameters
   const [formTime, setFormTime] = useState<string>("08:00");
   const [formDay, setFormDay] = useState<string>("1");
@@ -393,14 +466,53 @@ export default function CityExplorer() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Compute predicted cities when "Apply" changes parameters
-  const predictedCities: City[] = useMemo(() => {
-    const dayNum = Number(appliedDay);
-    return ASEAN_CITIES.map(c => predictCity(c, dayNum, appliedTime));
-  }, [appliedDay, appliedTime]);
+  // const predictedCities: City[] = useMemo(() => {
+  //   const dayNum = Number(appliedDay);
+  //   return ASEAN_CITIES.map(c => predictCity(c, dayNum, appliedTime));
+  // }, [appliedDay, appliedTime]);
+
+  useEffect(() => {
+  const fetchData = async () => {
+    const results: City[] = [];
+
+    for (const city of ASEAN_CITIES) {
+      try {
+        const res = await fetch(
+          `http://localhost:5000/api/air/${city.lat}/${city.lng}`
+        );
+        const data = await res.json();
+
+        console.log("Fetched:", city.name, data);
+
+        results.push({
+          ...city,
+          metrics: {
+            ...city.metrics,
+            aqi: data.aqi,
+            pm25: data.pm25,
+            no2: data.no2,
+            o3: data.o3,
+          },
+        });
+      } catch (err) {
+        console.error("Fail:", city.name, err);
+        results.push(city); // fallback
+      }
+    }
+
+    setLiveCities(results);
+    setLoading(false);
+  };
+
+  fetchData();
+}, []);
+
+  // Important!
+  if (loading) return <p>Loading...</p>;
 
   const selectedCity = useMemo(
-    () => predictedCities.find(c => c.id === selectedId) || null,
-    [predictedCities, selectedId]
+    () => liveCities.find(c => c.id === selectedId) || null,
+    [liveCities, selectedId]
   );
 
   const onApply = () => {
@@ -427,7 +539,7 @@ export default function CityExplorer() {
       {/* Map */}
       <MapContainer bounds={mapBounds} scrollWheelZoom className="h-full w-full">
         <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        {predictedCities.map((c) => {
+        {liveCities.map((c) => {
           const s = getStatusFromAQI(c.metrics.aqi);
           const m = toneClasses[s].marker;
           return (
