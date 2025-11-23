@@ -240,4 +240,8 @@ export default function ChatWidget() {
       )}
     </>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 24f8eebc3085a8e231d00323629a7f8d2200e82d
