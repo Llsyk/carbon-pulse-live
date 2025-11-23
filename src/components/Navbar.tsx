@@ -3,24 +3,44 @@ import { useEffect, useState } from "react";
 import logo from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
 import { CircleUserRound } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "@/hooks/use-toast";
+import { Session } from "@supabase/supabase-js";
 
 export default function Navbar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) 
-      setUser(JSON.parse(storedUser));
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+  
   const active = (p: string) => (pathname === p ? "ring-2 ring-white/60" : "");
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setUser(null);
-    navigate("/login");
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast({
+        title: "Logout failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Logged out",
+        description: "You've been successfully logged out.",
+      });
+      navigate("/login");
+    }
   }
 
   return (
@@ -48,31 +68,16 @@ export default function Navbar() {
             </Button>
           </Link>
 
-          {!user && (
-          <>
-          <Link to="/login">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/login")}`}>
-              Login
-            </Button>
-          </Link>
-          <Link to="/signup">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/signup")}`}>
-              Sign Up
-            </Button>
-          </Link>
-          </>
-          )}
-          {user && (
+          {session && (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 bg-blue-700/40 px-3 py-1 rounded-full">
                 <CircleUserRound className="w-5 h-5"/>
-                <span className ="text-sm">{user.email}</span>
-        </div>
-      
-      <Button onClick={logout} variant="secondary" className ="bg-white text-blue-700 hover:bg-blue-50">
-        Logout
-      </Button>
-      </div>      
+                <span className ="text-sm">{session.user.email}</span>
+              </div>
+              <Button onClick={logout} variant="secondary" className ="bg-white text-blue-700 hover:bg-blue-50">
+                Logout
+              </Button>
+            </div>      
           )}
         </div>
       </div>
