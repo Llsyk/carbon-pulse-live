@@ -39,21 +39,12 @@ function AppContent(){
         </Routes>
 
         {/* Global Widgets */}
-<<<<<<< HEAD
-                {!hideNavbar && (
-                  <>
-                    <ChatWidget />
-                    <ReportButton />
-                  </>
-                )}
-=======
         {!hideNavbar && (
           <>
             <ChatWidget />
             <ReportButton />
           </>
         )}
->>>>>>> 24f8eebc3085a8e231d00323629a7f8d2200e82d
       </>
   );
 }

@@ -42,11 +42,7 @@ export default function Navbar() {
               Map
             </Button>
           </Link>
-<<<<<<< HEAD
-<Link to="/community">
-=======
           <Link to="/community">
->>>>>>> 24f8eebc3085a8e231d00323629a7f8d2200e82d
             <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/community")}`}>
               Community
             </Button>
