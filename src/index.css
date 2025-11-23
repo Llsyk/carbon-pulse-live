@@ -18,11 +18,11 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 35% 12%;
 
-    --primary: 210 85% 45%;                /* main blue */
-    --primary-foreground: 210 40% 98%;
+    --primary: 208 89% 44%;                /* calming blue */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 30% 90%;
-    --secondary-foreground: 220 35% 12%;
+    --secondary: 151 63% 44%;              /* fresh green */
+    --secondary-foreground: 0 0% 100%;
 
     --muted: 210 20% 94%;
     --muted-foreground: 220 10% 45%;
@@ -46,9 +46,9 @@
     --radius: 0.75rem;
 
     /* Gradients & shadows */
-    --gradient-primary: linear-gradient(135deg, hsl(210 85% 45%) 0%, hsl(200 100% 40%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(208 89% 44%) 0%, hsl(151 63% 44%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 40% 98%) 100%);
-    --gradient-sky: linear-gradient(135deg, hsl(210 70% 65%) 0%, hsl(200 80% 55%) 100%);
+    --gradient-sky: linear-gradient(135deg, hsl(208 89% 50%) 0%, hsl(151 63% 50%) 100%);
 
     --shadow-subtle: 0 2px 8px hsl(210 25% 12% / 0.05);
     --shadow-card: 0 4px 16px hsl(210 25% 12% / 0.08);
