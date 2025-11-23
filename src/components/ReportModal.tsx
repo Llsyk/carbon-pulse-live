@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Flame, Cloud, AlertTriangle, Upload, MapPin } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
 import TreeRewardModal from "./TreeRewardModal";
 
 interface ReportModalProps {
@@ -36,30 +35,6 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
   const [shareExactLocation, setShareExactLocation] = useState(true);
   const [photo, setPhoto] = useState<File | null>(null);
   const [showReward, setShowReward] = useState(false);
-  const [postCount, setPostCount] = useState(0);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchUserPostCount = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserId(user.id);
-        const { data } = await supabase
-          .from("user_posts")
-          .select("post_count")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (data) {
-          setPostCount(data.post_count);
-        }
-      }
-    };
-
-    if (isOpen) {
-      fetchUserPostCount();
-    }
-  }, [isOpen]);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -68,40 +43,16 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
   };
 
   const handleSubmit = async () => {
-    if (!userId) return;
-
-    // Increment post count
-    const newPostCount = postCount + 1;
+    // Simulate API call
+    toast({
+      title: "Report Submitted",
+      description: "Thank you for keeping our community safe.",
+    });
     
-    const { error } = await supabase
-      .from("user_posts")
-      .update({ post_count: newPostCount })
-      .eq("user_id", userId);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update post count.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setPostCount(newPostCount);
-    
-    // Show progress or reward
-    if (newPostCount >= 50) {
-      toast({
-        title: "Report submitted!",
-        description: "Congratulations! You've reached 50 posts! 🌳",
-      });
-      setTimeout(() => setShowReward(true), 500);
-    } else {
-      toast({
-        title: "Report submitted!",
-        description: `Progress: ${newPostCount}/50 posts. Keep going!`,
-      });
-    }
+    // Simulate verification and show reward
+    setTimeout(() => {
+      setShowReward(true);
+    }, 1000);
   };
 
   const handleRewardClose = () => {
