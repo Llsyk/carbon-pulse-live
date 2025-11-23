@@ -39,6 +39,16 @@ interface User{
   };
 }
 
+interface AirQuality {
+  aqi: number;
+  pm25: number;
+  pm10: number;
+  no2: number;
+  o3: number;
+  co: number;
+  so2: number;
+}
+
 export default function Index() {
   const [user, setUser] = useState<User | null>(null);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -48,6 +58,10 @@ export default function Index() {
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [airQuality, setAirQuality] = useState<AirQuality | null>(null);
+  const [airErr, setAirErr] = useState<string | null>(null);
+  const [isAirLoading, setIsAirLoading] = useState(false);
+
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -72,6 +86,39 @@ export default function Index() {
     };
     loadInit();
   }, []);
+
+  useEffect(() => {
+  const lat = user?.health?.lat;
+  const lng = user?.health?.lng;
+
+  // Only call if we actually have coordinates
+  if (lat == null || lng == null) return;
+
+  const fetchAirQuality = async () => {
+    setIsAirLoading(true);
+    setAirErr(null);
+
+    try {
+      // Adjust URL if your Flask server is not on the same origin
+      const res = await fetch(`http://localhost:5000/api/air/${lat}/${lng}`);
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch air quality");
+      }
+
+      const data: AirQuality = await res.json();
+      setAirQuality(data);
+    } catch (err) {
+      console.error("Error loading air quality:", err);
+      setAirErr("Could not load air quality data.");
+      setAirQuality(null);
+    } finally {
+      setIsAirLoading(false);
+    }
+  };
+
+  fetchAirQuality();
+}, [user?.health?.lat, user?.health?.lng]);
 
   const fetchMetrics = useCallback(
     async (country: string, year: string) => {
@@ -223,14 +270,15 @@ export default function Index() {
               <KPICard
                 id="kpi-aqi"
                 title="Average AQI"
-                value={metrics.kpi.total}
+                // value={metrics.kpi.total}
+                value={airQuality ? airQuality.aqi : 0}
                 variant="warning"
                 hint="Average Air Quality Index for the selected filters."
               />
               <KPICard
                 id="kpi-pm25"
                 title="PM2.5 (µg/m³)"
-                value={metrics.kpi.offsets}
+                 value={airQuality ? airQuality.pm25 : 0}
                 variant="destructive"
                 hint="Fine particulate matter concentration."
                 unit="µg/m³"
@@ -238,28 +286,68 @@ export default function Index() {
               <KPICard
                 id="kpi-no2"
                 title="NO₂ (ppb)"
-                value={metrics.kpi.net}
+                value={airQuality ? airQuality.no2 : 0}
                 variant="default"
                 hint="Nitrogen dioxide concentration."
+                unit="ppb"
+              />
+              <KPICard
+                id="kpi-pm10"
+                title="PM10 (ppb)"
+                value={airQuality ? airQuality.pm10 : 0}
+                variant="default"
+                hint="Fine particulate matter concentration."
+                unit="µg/m³"
+              />
+              <KPICard
+                id="kpi-co"
+                title="CO (ppb)"
+                value={airQuality ? airQuality.co : 0}
+                variant="default"
+                hint="Carbon monoxide concentration."
+                unit="µg/m³"
+              />
+              <KPICard
+                id="kpi-o3"
+                title="O₃ (ppb)"
+                value={airQuality ? airQuality.o3 : 0}
+                variant="default"
+                hint="Ozone concentration."
                 unit="ppb"
               />
             </div>
 
             {/* Summary Tiles */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <SummaryTile title="PM2.5" value={metrics.categories.energy} target={metrics.targets.energy} unit="µg/m³"/>
               <SummaryTile title="NO₂" value={metrics.categories.transport} target={metrics.targets.transport} unit="ppb"/>
               <SummaryTile title="O₃" value={metrics.categories.waste} target={metrics.targets.waste} unit="ppb"/>
-            </div>
+            </div> */}
 
             {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="lg:col-span-2">
-                <EmissionsOverTimeChart data={metrics.timeseries} />
-              </div>
-              <EmissionsByCategoryChart data={metrics.categories} />
-              <EmissionsByScopeChart data={metrics.scopes} />
-            </div>
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="lg:col-span-2">
+      <EmissionsOverTimeChart data={metrics.timeseries} />
+    </div>
+
+    {/* Emissions by Category – using API pollutants */}
+    {airQuality && (
+  <EmissionsByCategoryChart
+    data={[
+      { label: "PM2.5", value: airQuality.pm25, unit: "µg/m³" },
+      { label: "PM10",  value: airQuality.pm10, unit: "µg/m³" },
+      { label: "NO₂",   value: airQuality.no2,  unit: "ppb" },
+      { label: "CO",    value: airQuality.co,   unit: "ppb" },
+      { label: "O₃",    value: airQuality.o3,   unit: "ppb" },
+    ]}
+  />
+)}
+
+
+
+    <EmissionsByScopeChart data={metrics.scopes} />
+  </div>
+
           </section>
         ) : (
           <div className="text-center py-12">
