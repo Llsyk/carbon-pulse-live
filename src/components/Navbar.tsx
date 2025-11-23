@@ -42,6 +42,11 @@ export default function Navbar() {
               Map
             </Button>
           </Link>
+<Link to="/community">
+            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/community")}`}>
+              Community
+            </Button>
+          </Link>
 
           {!user && (
           <>

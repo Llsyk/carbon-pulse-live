@@ -9,7 +9,10 @@ import NotFound from "./pages/NotFound";
 import CityExplorer from "@/pages/CityExplorer";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import Community from "@/pages/Community";
 import Navbar from "@/components/Navbar";
+import ChatWidget from "@/components/ChatWidget";
+import ReportButton from "@/components/ReportButton";
 
 const queryClient = new QueryClient();
 
@@ -27,12 +30,21 @@ function AppContent(){
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/explorer" element={<CityExplorer />} />
+          <Route path="/community" element={<Community />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 
           {/* Catch-all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+
+        {/* Global Widgets */}
+                {!hideNavbar && (
+                  <>
+                    <ChatWidget />
+                    <ReportButton />
+                  </>
+                )}
       </>
   );
 }
