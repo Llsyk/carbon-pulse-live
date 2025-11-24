@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "./models/User.js";
 import requireAuth from "./middleware/requireAuth.js";
+import Post from "./models/Post.js";
 
 // email notifier + scheduler functions
 import emailNotifier, {
@@ -273,6 +274,27 @@ app.post("/api/notify/email", requireAuth, async (req, res) => {
     console.error(e);
     return res.status(500).json({ error: "Server error" });
   }
+});
+app.get("/api/posts", async (req, res) => {
+  try {
+    const posts = await Post.find()
+      .sort({ createdAt: -1 })
+      .populate("userId", "name"); // get user name
+    res.json(posts);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch posts" });
+  }
+});
+app.post("/api/posts/create", async (req, res) => {
+  const { userId, category, description, location } = req.body;
+
+  if (!userId) return res.status(400).json({ message: "Missing userId" });
+
+  // Save to DB (MongoDB example)
+  const post = await Post.create({ userId, category, description, location });
+
+  res.status(201).json({ message: "Post created", post });
 });
 
 /*

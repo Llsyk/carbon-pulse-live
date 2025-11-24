@@ -18,6 +18,7 @@ import TreeRewardModal from "./TreeRewardModal";
 interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  user: any;   // logged-in user from ReportButton
 }
 
 const CATEGORIES = [
@@ -27,7 +28,7 @@ const CATEGORIES = [
   { id: "other", label: "Other", icon: AlertTriangle },
 ];
 
-export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
+export default function ReportModal({ isOpen, onClose, user }: ReportModalProps) {
   const [step, setStep] = useState(1);
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
@@ -42,23 +43,48 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
     }
   };
 
+  // 🔥 FIXED VERSION — using user._id
   const handleSubmit = async () => {
-    // Simulate API call
-    toast({
-      title: "Report Submitted",
-      description: "Thank you for keeping our community safe.",
-    });
-    
-    // Simulate verification and show reward
-    setTimeout(() => {
-      setShowReward(true);
-    }, 1000);
+    console.log("Submitting report for user:", user);
+  if (!user) {
+    toast({ title: "You must login", description: "Please login to submit a report." });
+    return;
+  }
+    if (!user) {
+      toast({ title: "You must login", description: "Please login to submit a report." });
+      return;
+    }
+
+    try {
+      
+const API_URL = "http://localhost:4000"; // backend URL
+
+const res = await fetch(`${API_URL}/api/posts/create`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ userId: user.id, category, description, location }),
+});
+
+
+
+
+
+      if (!res.ok) throw new Error("Failed to submit");
+
+      toast({
+        title: "Report Submitted",
+        description: "Your report has been shared with the community.",
+      });
+
+      setTimeout(() => setShowReward(true), 1000);
+    } catch (error) {
+      toast({ title: "Error", description: "Could not submit report." });
+    }
   };
 
   const handleRewardClose = () => {
     setShowReward(false);
     onClose();
-    // Reset form
     setStep(1);
     setCategory("");
     setDescription("");
@@ -69,7 +95,6 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
   const handleClose = () => {
     if (!showReward) {
       onClose();
-      // Reset form
       setStep(1);
       setCategory("");
       setDescription("");
@@ -88,6 +113,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
             </DialogTitle>
           </DialogHeader>
 
+          {/* Step 1 */}
           {step === 1 && (
             <div className="space-y-4">
               <div>
@@ -124,6 +150,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
             </div>
           )}
 
+          {/* Step 2 */}
           {step === 2 && (
             <div className="space-y-4">
               <div>
@@ -139,7 +166,6 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
                     variant="outline"
                     size="icon"
                     onClick={() => {
-                      // Simulate getting location
                       setLocation("Current Location (Auto-detected)");
                       toast({
                         title: "Location detected",
@@ -156,7 +182,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
                 <Label htmlFor="description">Details (optional, max 300 chars)</Label>
                 <Textarea
                   id="description"
-                  placeholder="What did you see? E.g., thick smoke coming from the market."
+                  placeholder="What did you see?"
                   value={description}
                   onChange={(e) => setDescription(e.target.value.slice(0, 300))}
                   maxLength={300}
@@ -191,6 +217,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
             </div>
           )}
 
+          {/* Step 3 */}
           {step === 3 && (
             <div className="space-y-4">
               <div>

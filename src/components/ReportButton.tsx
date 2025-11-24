@@ -1,10 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReportModal from "./ReportModal";
 
 export default function ReportButton() {
   const [isOpen, setIsOpen] = useState(false);
+
+  // Store logged-in user
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    // Get user info (adjust based on your auth system)
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      setUser(JSON.parse(stored));
+    }
+  }, []);
 
   return (
     <>
@@ -16,7 +27,13 @@ export default function ReportButton() {
         <AlertCircle className="h-5 w-5 mr-2" />
         Report
       </Button>
-      <ReportModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+
+      {/* NOW we pass user to ReportModal */}
+      <ReportModal 
+        isOpen={isOpen} 
+        onClose={() => setIsOpen(false)} 
+        user={user} 
+      />
     </>
   );
 }
