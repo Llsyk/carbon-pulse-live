@@ -5,16 +5,11 @@ import ReportModal from "./ReportModal";
 
 export default function ReportButton() {
   const [isOpen, setIsOpen] = useState(false);
-
-  // Store logged-in user
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    // Get user info (adjust based on your auth system)
     const stored = localStorage.getItem("user");
-    if (stored) {
-      setUser(JSON.parse(stored));
-    }
+    if (stored) setUser(JSON.parse(stored));
   }, []);
 
   return (
@@ -22,18 +17,18 @@ export default function ReportButton() {
       <Button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-28 right-6 z-40 bg-secondary text-secondary-foreground rounded-full px-6 py-4 shadow-lg hover:shadow-xl transition-all hover:scale-105"
-        aria-label="Report an incident"
       >
         <AlertCircle className="h-5 w-5 mr-2" />
         Report
       </Button>
 
-      {/* NOW we pass user to ReportModal */}
-      <ReportModal 
-        isOpen={isOpen} 
-        onClose={() => setIsOpen(false)} 
-        user={user} 
-      />
+      {user && (
+        <ReportModal
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          user={user}
+        />
+      )}
     </>
   );
 }

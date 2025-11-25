@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import http from "http";              // <-- for socket.io
+import { Server as SocketServer } from "socket.io"; // <-- socket.io
 import User from "./models/User.js";
 import requireAuth from "./middleware/requireAuth.js";
 import Post from "./models/Post.js";
@@ -23,8 +25,24 @@ dotenv.config();
 console.log("DEBUG EMAIL_USER:", process.env.EMAIL_USER);
 console.log("DEBUG EMAIL_PASS:", process.env.EMAIL_PASS ? "Loaded ✅" : "Missing ❌");
 
-const app = express();
 
+const app = express();
+const server = http.createServer(app); // Wrap express app
+const io = new SocketServer(server, {
+  cors: {
+    origin: ["http://localhost:8080", "http://127.0.0.1:8080"],
+    credentials: true,
+  },
+});
+
+// --- Socket.IO: log connections ---
+io.on("connection", (socket) => {
+  console.log("New client connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
+});
 // --- CORS: allow your frontend origins (8080 + 127.0.0.1) ---
 app.use(
   cors({
@@ -82,7 +100,7 @@ mongoose
     }
 
     // start listening after DB + scheduler are ready
-    app.listen(PORT, () => console.log(`🚀 API on http://localhost:${PORT}`));
+    server.listen(PORT, () => console.log(`🚀 API on http://localhost:${PORT}`));
   })
   .catch((e) => {
     console.error("❌ Mongo error", e);
@@ -295,6 +313,9 @@ app.post("/api/posts/create", async (req, res) => {
     // Save post to DB
     const post = await Post.create({ userId, category, description, location });
 
+    // Populate userId to include the name before emitting
+    const populatedPost = await post.populate("userId", "name");
+
     // Increment user's post count
     const user = await User.findByIdAndUpdate(
       userId,
@@ -302,9 +323,12 @@ app.post("/api/posts/create", async (req, res) => {
       { new: true }
     );
 
+    // Emit real-time event with populated user
+    io.emit("new-post", populatedPost);
+
     res.status(201).json({ 
       message: "Post created", 
-      post,
+      post: populatedPost,
       postCount: user?.postCount || 0
     });
   } catch (err) {
@@ -312,6 +336,7 @@ app.post("/api/posts/create", async (req, res) => {
     res.status(500).json({ message: "Failed to create post" });
   }
 });
+
 
 // Get user's post count
 app.get("/api/users/:userId/post-count", async (req, res) => {
