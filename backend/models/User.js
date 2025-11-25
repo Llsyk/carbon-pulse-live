@@ -24,7 +24,8 @@ const UserSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
-    health: { type: HealthSchema, required: true }, // <-- mark as required
+    health: { type: HealthSchema, required: true },
+    postCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

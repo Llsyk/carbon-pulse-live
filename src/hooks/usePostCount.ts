@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 
 interface PostCountData {
   postCount: number;
@@ -9,7 +9,7 @@ interface PostCountData {
   error: string | null;
 }
 
-export function usePostCount(userId: string | null): PostCountData & { incrementPost: () => Promise<void> } {
+export function usePostCount(userId: string | null): PostCountData {
   const [postCount, setPostCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +17,7 @@ export function usePostCount(userId: string | null): PostCountData & { increment
   const treesPlanted = Math.floor(postCount / 10);
   const progressToNextTree = postCount % 10;
 
-  // Fetch current post count
+  // Fetch current post count from MongoDB
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -26,15 +26,8 @@ export function usePostCount(userId: string | null): PostCountData & { increment
 
     const fetchPostCount = async () => {
       try {
-        const { data, error } = await supabase
-          .from("user_posts")
-          .select("post_count")
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        setPostCount(data?.post_count || 0);
+        const data = await api<{ postCount: number }>(`/api/users/${userId}/post-count`);
+        setPostCount(data.postCount || 0);
       } catch (err) {
         console.error("Error fetching post count:", err);
         setError("Failed to fetch post count");
@@ -46,41 +39,11 @@ export function usePostCount(userId: string | null): PostCountData & { increment
     fetchPostCount();
   }, [userId]);
 
-  // Increment post count
-  const incrementPost = async () => {
-    if (!userId) return;
-
-    try {
-      // Upsert: insert if not exists, update if exists
-      const { data, error } = await supabase
-        .from("user_posts")
-        .upsert(
-          {
-            user_id: userId,
-            post_count: postCount + 1,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        )
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setPostCount(data.post_count);
-    } catch (err) {
-      console.error("Error incrementing post count:", err);
-      setError("Failed to update post count");
-      throw err;
-    }
-  };
-
   return {
     postCount,
     treesPlanted,
     progressToNextTree,
     isLoading,
     error,
-    incrementPost,
   };
 }
