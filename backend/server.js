@@ -291,10 +291,39 @@ app.post("/api/posts/create", async (req, res) => {
 
   if (!userId) return res.status(400).json({ message: "Missing userId" });
 
-  // Save to DB (MongoDB example)
-  const post = await Post.create({ userId, category, description, location });
+  try {
+    // Save post to DB
+    const post = await Post.create({ userId, category, description, location });
 
-  res.status(201).json({ message: "Post created", post });
+    // Increment user's post count
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { postCount: 1 } },
+      { new: true }
+    );
+
+    res.status(201).json({ 
+      message: "Post created", 
+      post,
+      postCount: user?.postCount || 0
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to create post" });
+  }
+});
+
+// Get user's post count
+app.get("/api/users/:userId/post-count", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    res.json({ postCount: user.postCount || 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch post count" });
+  }
 });
 
 /*

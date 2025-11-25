@@ -40,7 +40,7 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [showCertificateModal, setShowCertificateModal] = useState(false);
 
-  const { postCount, treesPlanted, progressToNextTree, incrementPost } = usePostCount(user?.id || null);
+  const { postCount, treesPlanted, progressToNextTree } = usePostCount(user?.id || null);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -65,8 +65,8 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
 
       if (!res.ok) throw new Error("Failed to submit");
 
-      // Increment post count in Supabase
-      await incrementPost();
+      const data = await res.json();
+      const newPostCount = data.postCount || postCount + 1;
 
       toast({
         title: "Report Submitted",
@@ -74,7 +74,6 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
       });
 
       // Calculate new values after increment
-      const newPostCount = postCount + 1;
       const newTreesPlanted = Math.floor(newPostCount / 10);
       const newProgress = newPostCount % 10;
 
