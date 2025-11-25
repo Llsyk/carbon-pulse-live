@@ -13,7 +13,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Flame, Cloud, AlertTriangle, Upload, MapPin } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import TreeRewardModal from "./TreeRewardModal";
+import PostProgressModal from "./PostProgressModal";
+import TreeCertificateModal from "./TreeCertificateModal";
+import { usePostCount } from "@/hooks/usePostCount";
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -35,7 +37,10 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
   const [location, setLocation] = useState("");
   const [shareExactLocation, setShareExactLocation] = useState(true);
   const [photo, setPhoto] = useState<File | null>(null);
-  const [showReward, setShowReward] = useState(false);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
+
+  const { postCount, treesPlanted, progressToNextTree, incrementPost } = usePostCount(user?.id || null);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -43,47 +48,54 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
     }
   };
 
-  // 🔥 FIXED VERSION — using user._id
   const handleSubmit = async () => {
-    console.log("Submitting report for user:", user);
-  if (!user) {
-    toast({ title: "You must login", description: "Please login to submit a report." });
-    return;
-  }
     if (!user) {
       toast({ title: "You must login", description: "Please login to submit a report." });
       return;
     }
 
     try {
-      
-const API_URL = "http://localhost:4000"; // backend URL
+      const API_URL = "http://localhost:4000";
 
-const res = await fetch(`${API_URL}/api/posts/create`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ userId: user.id, category, description, location }),
-});
-
-
-
-
+      const res = await fetch(`${API_URL}/api/posts/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, category, description, location }),
+      });
 
       if (!res.ok) throw new Error("Failed to submit");
+
+      // Increment post count in Supabase
+      await incrementPost();
 
       toast({
         title: "Report Submitted",
         description: "Your report has been shared with the community.",
       });
 
-      setTimeout(() => setShowReward(true), 1000);
+      // Calculate new values after increment
+      const newPostCount = postCount + 1;
+      const newTreesPlanted = Math.floor(newPostCount / 10);
+      const newProgress = newPostCount % 10;
+
+      // Show appropriate modal based on progress
+      setTimeout(() => {
+        if (newProgress === 0) {
+          // Milestone reached (10, 20, 30... posts)
+          setShowCertificateModal(true);
+        } else {
+          // Regular progress
+          setShowProgressModal(true);
+        }
+      }, 1000);
     } catch (error) {
       toast({ title: "Error", description: "Could not submit report." });
     }
   };
 
-  const handleRewardClose = () => {
-    setShowReward(false);
+  const handleModalClose = () => {
+    setShowProgressModal(false);
+    setShowCertificateModal(false);
     onClose();
     setStep(1);
     setCategory("");
@@ -93,7 +105,7 @@ const res = await fetch(`${API_URL}/api/posts/create`, {
   };
 
   const handleClose = () => {
-    if (!showReward) {
+    if (!showProgressModal && !showCertificateModal) {
       onClose();
       setStep(1);
       setCategory("");
@@ -105,7 +117,7 @@ const res = await fetch(`${API_URL}/api/posts/create`, {
 
   return (
     <>
-      <Dialog open={isOpen && !showReward} onOpenChange={handleClose}>
+      <Dialog open={isOpen && !showProgressModal && !showCertificateModal} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
@@ -289,7 +301,19 @@ const res = await fetch(`${API_URL}/api/posts/create`, {
         </DialogContent>
       </Dialog>
 
-      <TreeRewardModal isOpen={showReward} onClose={handleRewardClose} />
+      <PostProgressModal
+        isOpen={showProgressModal}
+        onClose={handleModalClose}
+        progressToNextTree={progressToNextTree + 1}
+        userName={user?.name}
+      />
+
+      <TreeCertificateModal
+        isOpen={showCertificateModal}
+        onClose={handleModalClose}
+        treesPlanted={treesPlanted + 1}
+        userName={user?.name}
+      />
     </>
   );
 }
