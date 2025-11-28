@@ -5,6 +5,9 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
+import path from "path";
+
 import http from "http";              // <-- for socket.io
 import { Server as SocketServer } from "socket.io"; // <-- socket.io
 import User from "./models/User.js";
@@ -34,6 +37,19 @@ const io = new SocketServer(server, {
     credentials: true,
   },
 });
+// --- Multer: File Upload Storage ---
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // folder must exist
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, Date.now() + ext); // unique filename
+  },
+});
+
+const upload = multer({ storage });
+app.use("/uploads", express.static("uploads"));
 
 // --- Socket.IO: log connections ---
 io.on("connection", (socket) => {
@@ -304,38 +320,46 @@ app.get("/api/posts", async (req, res) => {
     res.status(500).json({ message: "Failed to fetch posts" });
   }
 });
-app.post("/api/posts/create", async (req, res) => {
-  const { userId, category, description, location } = req.body;
-
-  if (!userId) return res.status(400).json({ message: "Missing userId" });
+app.post("/api/posts/create", upload.single("image"), async (req, res) => {
+  console.log("req.body:", req.body);
+  console.log("req.file:", req.file);
 
   try {
-    // Save post to DB
-    const post = await Post.create({ userId, category, description, location });
+    const { userId, category, description, location } = req.body;
+    if (!userId) return res.status(400).json({ message: "Missing userId" });
 
-    // Populate userId to include the name before emitting
+    let imageUrl = null;
+    if (req.file) imageUrl = `/uploads/${req.file.filename}`;
+
+    const post = await Post.create({
+      userId,
+      category,
+      description,
+      location,
+      image: imageUrl,
+    });
+
     const populatedPost = await post.populate("userId", "name");
 
-    // Increment user's post count
     const user = await User.findByIdAndUpdate(
       userId,
       { $inc: { postCount: 1 } },
       { new: true }
     );
 
-    // Emit real-time event with populated user
     io.emit("new-post", populatedPost);
 
-    res.status(201).json({ 
-      message: "Post created", 
+    return res.status(201).json({
+      message: "Post created",
       post: populatedPost,
-      postCount: user?.postCount || 0
+      postCount: user?.postCount || 0,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to create post" });
+    console.error("POST CREATE ERROR:", err);
+    return res.status(500).json({ message: "Failed to create post" });
   }
 });
+
 
 
 // Get user's post count

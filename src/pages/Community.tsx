@@ -13,7 +13,8 @@ interface Post {
   category: "fire" | "smoke" | "pollution" | "other";
   description: string;
   location: string;
-  photoUrl?: string;
+  image?: string; // must match backend field name
+
   likes: number;
   comments: number;
   isVerified: boolean;
@@ -130,6 +131,13 @@ export default function Community() {
                 </div>
 
                 <p className="text-foreground mb-4">{post.description}</p>
+                {post.image && (
+  <img
+    src={`${API_URL}${post.image}`}
+    alt="post"
+    className="w-full h-auto rounded-lg mb-4 border"
+  />
+)}
 
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                   <MapPin className="h-4 w-4" />

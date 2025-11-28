@@ -7,7 +7,7 @@ const PostSchema = new mongoose.Schema(
     category: { type: String, enum: ["fire", "smoke", "pollution", "other"], required: true },
     description: { type: String, default: "" },
     location: { type: String, required: true },
-    photoUrl: { type: String, default: "" },
+    image: { type: String, default: "" },
     likes: { type: Number, default: 0 },
     comments: { type: Number, default: 0 },
     isVerified: { type: Boolean, default: false },
