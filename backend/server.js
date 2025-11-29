@@ -402,6 +402,7 @@ app.post("/api/posts/:postId/like", async (req, res) => {
 });
 
 // Add comment to post
+<<<<<<< HEAD
 app.post("/api/posts/:id/comment", async (req, res) => {
   try {
     const { userId, text } = req.body;
@@ -432,6 +433,23 @@ app.post("/api/posts/:id/comment", async (req, res) => {
     res.json({ message: "Comment added", post: populated });
   } catch (err) {
     console.error("Error adding comment:", err);
+=======
+app.post("/api/posts/:postId/comment", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const post = await Post.findByIdAndUpdate(
+      postId,
+      { $inc: { comments: 1 } },
+      { new: true }
+    ).populate("userId", "name");
+    
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    io.emit("post-updated", post);
+    res.json({ comments: post.comments });
+  } catch (err) {
+    console.error(err);
+>>>>>>> 16fddf75f036f9e3b561ee3b07852ed1c0346bca
     res.status(500).json({ message: "Failed to add comment" });
   }
 });
