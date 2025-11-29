@@ -325,8 +325,9 @@ app.post("/api/posts/create", upload.single("image"), async (req, res) => {
   console.log("req.file:", req.file);
 
   try {
-    const { userId, category, description, location } = req.body;
+    const { userId, category, description, location, latitude, longitude } = req.body;
     if (!userId) return res.status(400).json({ message: "Missing userId" });
+    if (!latitude || !longitude) return res.status(400).json({ message: "Missing location coordinates" });
 
     let imageUrl = null;
     if (req.file) imageUrl = `/uploads/${req.file.filename}`;
@@ -336,6 +337,8 @@ app.post("/api/posts/create", upload.single("image"), async (req, res) => {
       category,
       description,
       location,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
       image: imageUrl,
     });
 

@@ -7,6 +7,8 @@ const PostSchema = new mongoose.Schema(
     category: { type: String, enum: ["fire", "smoke", "pollution", "other"], required: true },
     description: { type: String, default: "" },
     location: { type: String, required: true },
+    latitude: { type: Number, required: true },
+    longitude: { type: Number, required: true },
     image: { type: String, default: "" },
     likes: { type: Number, default: 0 },
     comments: { type: Number, default: 0 },

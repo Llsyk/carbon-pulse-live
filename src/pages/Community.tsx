@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Flame, Cloud, AlertTriangle, ThumbsUp, MessageSquare } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MapPin, Flame, Cloud, AlertTriangle, ThumbsUp, MessageSquare, Map } from "lucide-react";
 import ReportButton from "@/components/ReportButton";
 
 interface Post {
@@ -13,8 +15,9 @@ interface Post {
   category: "fire" | "smoke" | "pollution" | "other";
   description: string;
   location: string;
-  image?: string; // must match backend field name
-
+  latitude: number;
+  longitude: number;
+  image?: string;
   likes: number;
   comments: number;
   isVerified: boolean;
@@ -30,7 +33,9 @@ const CATEGORY_CONFIG = {
 };
 
 export default function Community() {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<Post[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const API_URL = "http://localhost:4000";
 
   useEffect(() => {
@@ -76,28 +81,74 @@ export default function Community() {
     };
   }, []);
 
-  if (!posts.length) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>No posts yet.</p>
-      </div>
-    );
-  }
+  const filteredPosts = selectedCategory === "all" 
+    ? posts 
+    : posts.filter(post => post.category === selectedCategory);
+
+  const handleViewOnMap = (post: Post) => {
+    const params = new URLSearchParams({
+      lat: post.latitude.toString(),
+      lng: post.longitude.toString(),
+      location: post.location,
+      category: post.category,
+      description: post.description,
+      userName: post.userId.name,
+    });
+    navigate(`/post-location?${params.toString()}`);
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Community Feed</h1>
-          <p className="text-muted-foreground">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-primary to-secondary text-primary-foreground">
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <h1 className="text-4xl font-bold mb-3">Community Feed</h1>
+          <p className="text-lg opacity-90">
             Stay informed about safety incidents in your area
           </p>
         </div>
+      </div>
 
-        <ReportButton />
+      <div className="max-w-4xl mx-auto px-6 py-6">
+        {/* Report Button */}
+        <div className="mb-6">
+          <ReportButton />
+        </div>
 
-        <div className="space-y-4 mt-6">
-          {posts.map((post) => {
+        {/* Category Filter */}
+        <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="fire">
+              <Flame className="h-4 w-4 mr-1" />
+              Fire
+            </TabsTrigger>
+            <TabsTrigger value="smoke">
+              <Cloud className="h-4 w-4 mr-1" />
+              Smoke
+            </TabsTrigger>
+            <TabsTrigger value="pollution">
+              <AlertTriangle className="h-4 w-4 mr-1" />
+              Pollution
+            </TabsTrigger>
+            <TabsTrigger value="other">Other</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Posts List */}
+        {filteredPosts.length === 0 ? (
+          <Card className="p-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
+            <p className="text-muted-foreground">
+              {selectedCategory === "all" 
+                ? "Be the first to report an incident in your area." 
+                : `No ${selectedCategory} incidents reported yet.`}
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {filteredPosts.map((post) => {
             const categoryConfig = CATEGORY_CONFIG[post.category];
             const CategoryIcon = categoryConfig.icon;
 
@@ -153,14 +204,21 @@ export default function Community() {
                     <MessageSquare className="h-4 w-4" />
                     {post.comments}
                   </Button>
-                  <Button variant="ghost" size="sm" className="ml-auto">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="ml-auto gap-2"
+                    onClick={() => handleViewOnMap(post)}
+                  >
+                    <Map className="h-4 w-4" />
                     View on Map
                   </Button>
                 </div>
               </Card>
             );
           })}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
