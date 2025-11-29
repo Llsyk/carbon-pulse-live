@@ -36,6 +36,7 @@ export default function Community() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
   const API_URL = "http://localhost:4000";
 
   useEffect(() => {
@@ -76,6 +77,14 @@ export default function Community() {
       }
     });
 
+    // Listen for post updates (likes, comments)
+    socket.on("post-updated", (updatedPost: Post) => {
+      const normalized = normalizePost(updatedPost);
+      if (normalized) {
+        setPosts(prev => prev.map(p => p._id === normalized._id ? normalized : p));
+      }
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -95,6 +104,35 @@ export default function Community() {
       userName: post.userId.name,
     });
     navigate(`/post-location?${params.toString()}`);
+  };
+
+  const handleLike = async (postId: string) => {
+    if (likingPosts.has(postId)) return;
+    
+    setLikingPosts(prev => new Set(prev).add(postId));
+    try {
+      await fetch(`${API_URL}/api/posts/${postId}/like`, {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Failed to like post:", error);
+    } finally {
+      setLikingPosts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleComment = async (postId: string) => {
+    try {
+      await fetch(`${API_URL}/api/posts/${postId}/comment`, {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Failed to add comment:", error);
+    }
   };
 
   return (
@@ -196,11 +234,22 @@ export default function Community() {
                 </div>
 
                 <div className="flex items-center gap-4 pt-4 border-t border-border">
-                  <Button variant="ghost" size="sm" className="gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="gap-2"
+                    onClick={() => handleLike(post._id)}
+                    disabled={likingPosts.has(post._id)}
+                  >
                     <ThumbsUp className="h-4 w-4" />
                     {post.likes}
                   </Button>
-                  <Button variant="ghost" size="sm" className="gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="gap-2"
+                    onClick={() => handleComment(post._id)}
+                  >
                     <MessageSquare className="h-4 w-4" />
                     {post.comments}
                   </Button>

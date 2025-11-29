@@ -378,6 +378,46 @@ app.get("/api/users/:userId/post-count", async (req, res) => {
   }
 });
 
+// Like a post
+app.post("/api/posts/:postId/like", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const post = await Post.findByIdAndUpdate(
+      postId,
+      { $inc: { likes: 1 } },
+      { new: true }
+    ).populate("userId", "name");
+    
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    io.emit("post-updated", post);
+    res.json({ likes: post.likes });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to like post" });
+  }
+});
+
+// Add comment to post
+app.post("/api/posts/:postId/comment", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const post = await Post.findByIdAndUpdate(
+      postId,
+      { $inc: { comments: 1 } },
+      { new: true }
+    ).populate("userId", "name");
+    
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    io.emit("post-updated", post);
+    res.json({ comments: post.comments });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to add comment" });
+  }
+});
+
 /*
   IMPORTANT:
   - If you have a route that updates user's outings, call scheduleOutingAlertsForUser(user)
