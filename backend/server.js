@@ -313,20 +313,24 @@ app.get("/api/posts", async (req, res) => {
   try {
     const posts = await Post.find()
       .sort({ createdAt: -1 })
-      .populate("userId", "name"); // get user name
+      .populate("userId", "name") // post author
+      .populate("comments.userId", "name"); // comment author
+
     res.json(posts);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to fetch posts" });
   }
 });
+
 app.post("/api/posts/create", upload.single("image"), async (req, res) => {
   console.log("req.body:", req.body);
   console.log("req.file:", req.file);
 
   try {
-    const { userId, category, description, location } = req.body;
+    const { userId, category, description, location, latitude, longitude } = req.body;
     if (!userId) return res.status(400).json({ message: "Missing userId" });
+    if (!latitude || !longitude) return res.status(400).json({ message: "Missing location coordinates" });
 
     let imageUrl = null;
     if (req.file) imageUrl = `/uploads/${req.file.filename}`;
@@ -336,6 +340,8 @@ app.post("/api/posts/create", upload.single("image"), async (req, res) => {
       category,
       description,
       location,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
       image: imageUrl,
     });
 
@@ -372,6 +378,61 @@ app.get("/api/users/:userId/post-count", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to fetch post count" });
+  }
+});
+
+// Like a post
+app.post("/api/posts/:postId/like", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const post = await Post.findByIdAndUpdate(
+      postId,
+      { $inc: { likes: 1 } },
+      { new: true }
+    ).populate("userId", "name");
+    
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    io.emit("post-updated", post);
+    res.json({ likes: post.likes });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to like post" });
+  }
+});
+
+// Add comment to post
+app.post("/api/posts/:id/comment", async (req, res) => {
+  try {
+    const { userId, text } = req.body;
+
+    if (!text || !userId)
+      return res.status(400).json({ message: "Missing fields" });
+
+    const post = await Post.findById(req.params.id);
+
+    if (!post)
+      return res.status(404).json({ message: "Post not found" });
+
+    // SAFETY: Ensure comments is an array
+    if (!Array.isArray(post.comments)) {
+      post.comments = [];
+    }
+
+    // Push new comment
+    post.comments.push({ userId, text });
+
+    await post.save();
+
+    // Populate user names in comments
+    const populated = await post.populate("comments.userId", "name");
+
+    io.emit("post-updated", populated);
+
+    res.json({ message: "Comment added", post: populated });
+  } catch (err) {
+    console.error("Error adding comment:", err);
+    res.status(500).json({ message: "Failed to add comment" });
   }
 });
 

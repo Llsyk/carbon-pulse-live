@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
-import { Flame, Cloud, AlertTriangle, Upload, MapPin } from "lucide-react";
+import { Flame, Cloud, AlertTriangle, Upload, MapPin, Loader2, Search } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import PostProgressModal from "./PostProgressModal";
 import TreeCertificateModal from "./TreeCertificateModal";
@@ -39,10 +39,14 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [shareExactLocation, setShareExactLocation] = useState(true);
   const [photo, setPhoto] = useState<File | null>(null);
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
 
   const { postCount = 0 } = usePostCount(user?.id || null);
   const [newPostCount, setNewPostCount] = useState<number>(0);
@@ -61,6 +65,8 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
     setCategory("");
     setDescription("");
     setLocation("");
+    setLatitude(null);
+    setLongitude(null);
     setPhoto(null);
     setShareExactLocation(true);
   };
@@ -74,12 +80,22 @@ const handleSubmit = async () => {
     return;
   }
 
+  if (latitude === null || longitude === null) {
+    toast({
+      title: "Location Required",
+      description: "Please detect your location before submitting.",
+    });
+    return;
+  }
+
   try {
     const formData = new FormData();
     formData.append("userId", user.id);
     formData.append("category", category);
     formData.append("description", description);
     formData.append("location", location);
+    formData.append("latitude", latitude.toString());
+    formData.append("longitude", longitude.toString());
 
     if (photo) {
       formData.append("image", photo); // Must match Multer field name
@@ -135,9 +151,13 @@ const detectLocation = () => {
     return;
   }
 
+  setDetectingLocation(true);
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
       const { latitude, longitude } = pos.coords;
+      
+      setLatitude(latitude);
+      setLongitude(longitude);
 
       try {
         // Reverse geocoding using OpenStreetMap Nominatim
@@ -160,6 +180,8 @@ const detectLocation = () => {
           title: "Location detected",
           description: "Unable to convert coordinates to address.",
         });
+      } finally {
+        setDetectingLocation(false);
       }
     },
     () => {
@@ -167,8 +189,49 @@ const detectLocation = () => {
         title: "Location Permission Denied",
         description: "Please enable location access to auto-detect.",
       });
+      setDetectingLocation(false);
     }
   );
+};
+
+const geocodeLocation = async (locationQuery: string) => {
+  if (!locationQuery.trim()) {
+    toast({
+      title: "Enter a location",
+      description: "Please enter a location to search.",
+    });
+    return;
+  }
+  
+  setGeocoding(true);
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationQuery)}&format=json&limit=1`
+    );
+    const data = await response.json();
+    
+    if (data && data.length > 0) {
+      setLatitude(parseFloat(data[0].lat));
+      setLongitude(parseFloat(data[0].lon));
+      setLocation(data[0].display_name);
+      toast({
+        title: "Location found!",
+        description: data[0].display_name,
+      });
+    } else {
+      toast({
+        title: "Location not found",
+        description: "Try a different search (e.g., 'Yangon, Myanmar').",
+      });
+    }
+  } catch (error) {
+    toast({
+      title: "Search failed",
+      description: "Unable to search for location.",
+    });
+  } finally {
+    setGeocoding(false);
+  }
 };
 
   return (
@@ -213,20 +276,48 @@ const detectLocation = () => {
               <div className="flex gap-2 mt-2">
                 <Input
                   id="location"
-                  placeholder="Enter address or use current location"
+                  placeholder="Type location (e.g., Yangon)"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      geocodeLocation(location);
+                    }
+                  }}
                 />
                 <Button
-  variant="outline"
-  size="icon"
-  onClick={detectLocation}   // <-- changed
->
-  <MapPin className="h-4 w-4" />
-</Button>
-
-                  
+                  variant="outline"
+                  size="icon"
+                  onClick={() => geocodeLocation(location)}
+                  disabled={geocoding}
+                  title="Search location"
+                >
+                  {geocoding ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={detectLocation}
+                  disabled={detectingLocation}
+                  title="Detect my location"
+                >
+                  {detectingLocation ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MapPin className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
+              {latitude && longitude && (
+                <p className="text-xs text-muted-foreground">
+                  📍 {latitude.toFixed(4)}, {longitude.toFixed(4)}
+                </p>
+              )}
               <Label htmlFor="description">Details (optional, max 300 chars)</Label>
               <Textarea
                 id="description"

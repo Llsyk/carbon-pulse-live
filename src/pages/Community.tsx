@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
+
+import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Flame, Cloud, AlertTriangle, ThumbsUp, MessageSquare } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MapPin, Flame, Cloud, AlertTriangle, ThumbsUp, MessageSquare, Map } from "lucide-react";
 import ReportButton from "@/components/ReportButton";
+import CommentModal from "@/components/CommentModal";
 
 interface Post {
   _id: string;
@@ -13,10 +17,17 @@ interface Post {
   category: "fire" | "smoke" | "pollution" | "other";
   description: string;
   location: string;
-  image?: string; // must match backend field name
-
+  latitude: number;
+  longitude: number;
+  image?: string;
   likes: number;
-  comments: number;
+  comments: {
+  _id: string;
+  userId: { _id: string; name: string };
+  text: string;
+  createdAt: string;
+}[];
+
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
@@ -30,7 +41,14 @@ const CATEGORY_CONFIG = {
 };
 
 export default function Community() {
+  const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem("user") || "null");
   const [posts, setPosts] = useState<Post[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
+  const [activePost, setActivePost] = useState<Post | null>(null);
+const [openCommentModal, setOpenCommentModal] = useState(false);
+
   const API_URL = "http://localhost:4000";
 
   useEffect(() => {
@@ -39,12 +57,24 @@ export default function Community() {
     // Helper to normalize post
     const normalizePost = (p: any): Post | null => {
       if (!p.userId || !p.userId.name) return null;
-      return {
-        ...p,
-        userId: { _id: p.userId._id, name: p.userId.name },
-      };
-    };
+     return {
+    ...p,
+    userId: { _id: p.userId._id, name: p.userId.name },
+    comments: (p.comments || []).map((c: any) => {
+      // Use real userId if exists, otherwise fallback
+      const commentUser = c.userId && c.userId.name 
+        ? { _id: c.userId._id, name: c.userId.name } 
+        : { _id: "", name: "Unknown" };
 
+      return {
+        _id: c._id,
+        text: c.text,
+        createdAt: c.createdAt,
+        userId: commentUser
+      };
+    })
+  };
+};
     // Fetch initial posts
     const fetchPosts = async () => {
       try {
@@ -71,97 +101,251 @@ export default function Community() {
       }
     });
 
+    // Listen for post updates (likes, comments)
+    socket.on("post-updated", (updatedPost: Post) => {
+      const normalized = normalizePost(updatedPost);
+      if (normalized) {
+        setPosts(prev => prev.map(p => p._id === normalized._id ? normalized : p));
+      }
+    });
+
     return () => {
       socket.disconnect();
     };
   }, []);
 
-  if (!posts.length) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>No posts yet.</p>
-      </div>
-    );
-  }
+  const filteredPosts = selectedCategory === "all" 
+    ? posts 
+    : posts.filter(post => post.category === selectedCategory);
+
+  const handleViewOnMap = (post: Post) => {
+    const params = new URLSearchParams({
+      lat: post.latitude.toString(),
+      lng: post.longitude.toString(),
+      location: post.location,
+      category: post.category,
+      description: post.description,
+      userName: post.userId.name,
+    });
+    navigate(`/post-location?${params.toString()}`);
+  };
+
+  const handleLike = async (postId: string) => {
+    if (likingPosts.has(postId)) return;
+    
+    setLikingPosts(prev => new Set(prev).add(postId));
+    try {
+      await fetch(`${API_URL}/api/posts/${postId}/like`, {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Failed to like post:", error);
+    } finally {
+      setLikingPosts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+    }
+  };
+// Inside Community.tsx
+const handleCommentAdded = (newComment: Post["comments"][0]) => {
+  if (!activePost) return;
+  setPosts(prev =>
+    prev.map(post =>
+      post._id === activePost._id
+        ? { ...post, comments: [...post.comments, newComment] }
+        : post
+    )
+  );
+};
+
+ 
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Community Feed</h1>
-          <p className="text-muted-foreground">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-primary to-secondary text-primary-foreground">
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <h1 className="text-4xl font-bold mb-3">Community Feed</h1>
+          <p className="text-lg opacity-90">
             Stay informed about safety incidents in your area
           </p>
         </div>
+      </div>
 
-        <ReportButton />
+      <div className="max-w-4xl mx-auto px-6 py-6">
+        {/* Report Button */}
+        <div className="mb-6">
+          <ReportButton />
+        </div>
 
-        <div className="space-y-4 mt-6">
-          {posts.map((post) => {
-            const categoryConfig = CATEGORY_CONFIG[post.category];
-            const CategoryIcon = categoryConfig.icon;
+        {/* Category Filter */}
+        <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="fire">
+              <Flame className="h-4 w-4 mr-1" />
+              Fire
+            </TabsTrigger>
+            <TabsTrigger value="smoke">
+              <Cloud className="h-4 w-4 mr-1" />
+              Smoke
+            </TabsTrigger>
+            <TabsTrigger value="pollution">
+              <AlertTriangle className="h-4 w-4 mr-1" />
+              Pollution
+            </TabsTrigger>
+            <TabsTrigger value="other">Other</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Posts List */}
+        {filteredPosts.length === 0 ? (
+          <Card className="p-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
+            <p className="text-muted-foreground">
+              {selectedCategory === "all" 
+                ? "Be the first to report an incident in your area." 
+                : `No ${selectedCategory} incidents reported yet.`}
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+          {filteredPosts.map((post) => {
+  const categoryConfig = CATEGORY_CONFIG[post.category];
+  const CategoryIcon = categoryConfig.icon;
+
+  // Fallbacks for user
+  const postUserName = post.userId?.name ?? "Unknown";
+
+  return (
+    <Card key={post._id} className="p-6 hover:shadow-lg transition-shadow">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <Avatar>
+            <AvatarFallback className="bg-primary text-primary-foreground">
+              {postUserName.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold">{postUserName}</p>
+              {post.isVerified && (
+                <Badge variant="secondary" className="text-xs">
+                  ✓ Verified
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {new Date(post.createdAt).toLocaleTimeString()}
+            </p>
+          </div>
+        </div>
+        <Badge variant={categoryConfig.color as any}>
+          <CategoryIcon className="h-3 w-3 mr-1" />
+          {categoryConfig.label}
+        </Badge>
+      </div>
+
+      <p className="text-foreground mb-4">{post.description}</p>
+      {post.image && (
+        <img
+          src={`${API_URL}${post.image}`}
+          alt="post"
+          className="w-full h-auto rounded-lg mb-4 border"
+        />
+      )}
+
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+        <MapPin className="h-4 w-4" />
+        <span>{post.location}</span>
+      </div>
+
+      <div className="flex items-center gap-4 pt-4 border-t border-border">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="gap-2"
+          onClick={() => handleLike(post._id)}
+          disabled={likingPosts.has(post._id)}
+        >
+          <ThumbsUp className="h-4 w-4" />
+          {post.likes}
+        </Button>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="gap-2"
+          onClick={() => {
+            setActivePost(post);
+            setOpenCommentModal(true);
+          }}
+        >
+          <MessageSquare className="h-4 w-4" />
+          {post.comments.length}
+        </Button>
+
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="ml-auto gap-2"
+          onClick={() => handleViewOnMap(post)}
+        >
+          <Map className="h-4 w-4" />
+          View on Map
+        </Button>
+      </div>
+
+      {/* Comments Section */}
+      <div className="mt-4 border-t border-border pt-4 space-y-2">
+        {post.comments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No comments yet</p>
+        ) : (
+          post.comments.map(comment => {
+            const commentUserName = comment.userId?.name ?? "Unknown";
 
             return (
-              <Card key={post._id} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        {post.userId.name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold">{post.userId.name}</p>
-                        {post.isVerified && (
-                          <Badge variant="secondary" className="text-xs">
-                            ✓ Verified
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(post.createdAt).toLocaleTimeString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant={categoryConfig.color as any}>
-                    <CategoryIcon className="h-3 w-3 mr-1" />
-                    {categoryConfig.label}
-                  </Badge>
+              <div key={comment._id} className="flex items-start gap-2">
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                    {commentUserName.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-semibold">{commentUserName}</p>
+                  <p className="text-sm text-muted-foreground">{comment.text}</p>
                 </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </Card>
+  );
+})}
 
-                <p className="text-foreground mb-4">{post.description}</p>
-                {post.image && (
-  <img
-    src={`${API_URL}${post.image}`}
-    alt="post"
-    className="w-full h-auto rounded-lg mb-4 border"
+
+          
+          </div>
+          
+        )}
+        
+      </div>
+    {openCommentModal && activePost && (
+  <CommentModal
+    post={activePost}
+    user={user}
+    onClose={() => {
+      setOpenCommentModal(false);
+      setActivePost(null);
+    }}
+    onCommentAdded={handleCommentAdded} // ← NEW
   />
 )}
 
-                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-                  <MapPin className="h-4 w-4" />
-                  <span>{post.location}</span>
-                </div>
 
-                <div className="flex items-center gap-4 pt-4 border-t border-border">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    <ThumbsUp className="h-4 w-4" />
-                    {post.likes}
-                  </Button>
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    {post.comments}
-                  </Button>
-                  <Button variant="ghost" size="sm" className="ml-auto">
-                    View on Map
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
