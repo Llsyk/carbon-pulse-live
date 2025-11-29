@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import CityExplorer from "@/pages/CityExplorer";
+import PostLocationMap from "@/pages/PostLocationMap";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Community from "@/pages/Community";
@@ -31,6 +32,7 @@ function AppContent(){
           <Route path="/" element={<Index />} />
           <Route path="/explorer" element={<CityExplorer />} />
           <Route path="/community" element={<Community />} />
+          <Route path="/post-location" element={<PostLocationMap />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 

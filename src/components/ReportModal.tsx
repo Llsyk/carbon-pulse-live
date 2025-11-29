@@ -39,6 +39,8 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [shareExactLocation, setShareExactLocation] = useState(true);
   const [photo, setPhoto] = useState<File | null>(null);
   const [showProgressModal, setShowProgressModal] = useState(false);
@@ -61,6 +63,8 @@ export default function ReportModal({ isOpen, onClose, user }: ReportModalProps)
     setCategory("");
     setDescription("");
     setLocation("");
+    setLatitude(null);
+    setLongitude(null);
     setPhoto(null);
     setShareExactLocation(true);
   };
@@ -74,12 +78,22 @@ const handleSubmit = async () => {
     return;
   }
 
+  if (latitude === null || longitude === null) {
+    toast({
+      title: "Location Required",
+      description: "Please detect your location before submitting.",
+    });
+    return;
+  }
+
   try {
     const formData = new FormData();
     formData.append("userId", user.id);
     formData.append("category", category);
     formData.append("description", description);
     formData.append("location", location);
+    formData.append("latitude", latitude.toString());
+    formData.append("longitude", longitude.toString());
 
     if (photo) {
       formData.append("image", photo); // Must match Multer field name
@@ -138,6 +152,9 @@ const detectLocation = () => {
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
       const { latitude, longitude } = pos.coords;
+      
+      setLatitude(latitude);
+      setLongitude(longitude);
 
       try {
         // Reverse geocoding using OpenStreetMap Nominatim
