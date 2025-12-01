@@ -405,34 +405,85 @@ app.post("/api/posts/:postId/like", async (req, res) => {
 app.post("/api/posts/:id/comment", async (req, res) => {
   try {
     const { userId, text } = req.body;
+    const { id } = req.params;
 
-    if (!text || !userId)
-      return res.status(400).json({ message: "Missing fields" });
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const post = await Post.findById(req.params.id);
-
-    if (!post)
-      return res.status(404).json({ message: "Post not found" });
-
-    // SAFETY: Ensure comments is an array
-    if (!Array.isArray(post.comments)) {
-      post.comments = [];
-    }
-
-    // Push new comment
     post.comments.push({ userId, text });
-
     await post.save();
 
-    // Populate user names in comments
-    const populated = await post.populate("comments.userId", "name");
+    // Populate after save to get full user details
+    const populated = await Post.findById(id)
+      .populate("userId", "name")
+      .populate("comments.userId", "name");
 
+    // Emit real-time update
     io.emit("post-updated", populated);
 
     res.json({ message: "Comment added", post: populated });
   } catch (err) {
     console.error("Error adding comment:", err);
     res.status(500).json({ message: "Failed to add comment" });
+  }
+});
+
+// Edit post
+app.put("/api/posts/:id", upload.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, category, description, location, latitude, longitude } = req.body;
+    
+    const post = await Post.findById(id).populate("userId", "name");
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    // Check if user owns the post
+    if (post.userId._id.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to edit this post" });
+    }
+    
+    // Update fields
+    post.category = category;
+    post.description = description;
+    post.location = location;
+    post.latitude = parseFloat(latitude);
+    post.longitude = parseFloat(longitude);
+    
+    if (req.file) {
+      post.image = `/uploads/${req.file.filename}`;
+    }
+    
+    await post.save();
+    const updated = await Post.findById(id).populate("userId", "name").populate("comments.userId", "name");
+    
+    io.emit("post-updated", updated);
+    res.json({ message: "Post updated", post: updated });
+  } catch (err) {
+    console.error("Error updating post:", err);
+    res.status(500).json({ message: "Failed to update post" });
+  }
+});
+
+// Delete post
+app.delete("/api/posts/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+    
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    // Check if user owns the post
+    if (post.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to delete this post" });
+    }
+    
+    await Post.findByIdAndDelete(id);
+    io.emit("post-deleted", { postId: id });
+    res.json({ message: "Post deleted" });
+  } catch (err) {
+    console.error("Error deleting post:", err);
+    res.status(500).json({ message: "Failed to delete post" });
   }
 });
 

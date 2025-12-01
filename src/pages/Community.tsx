@@ -7,9 +7,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MapPin, Flame, Cloud, AlertTriangle, ThumbsUp, MessageSquare, Map } from "lucide-react";
+import { MapPin, Flame, Cloud, AlertTriangle, ThumbsUp, MessageSquare, Map, Pencil, Trash2 } from "lucide-react";
 import ReportButton from "@/components/ReportButton";
 import CommentModal from "@/components/CommentModal";
+import EditPostModal from "@/components/EditPostModal";
+import { toast } from "@/hooks/use-toast";
 
 interface Post {
   _id: string;
@@ -47,7 +49,9 @@ export default function Community() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
   const [activePost, setActivePost] = useState<Post | null>(null);
-const [openCommentModal, setOpenCommentModal] = useState(false);
+  const [openCommentModal, setOpenCommentModal] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [openEditModal, setOpenEditModal] = useState(false);
 
   const API_URL = "http://localhost:4000";
 
@@ -109,6 +113,11 @@ const [openCommentModal, setOpenCommentModal] = useState(false);
       }
     });
 
+    // Listen for post deletions
+    socket.on("post-deleted", ({ postId }: { postId: string }) => {
+      setPosts(prev => prev.filter(p => p._id !== postId));
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -148,19 +157,53 @@ const [openCommentModal, setOpenCommentModal] = useState(false);
       });
     }
   };
-// Inside Community.tsx
-const handleCommentAdded = (newComment: Post["comments"][0]) => {
-  if (!activePost) return;
-  setPosts(prev =>
-    prev.map(post =>
-      post._id === activePost._id
-        ? { ...post, comments: [...post.comments, newComment] }
-        : post
-    )
-  );
-};
+  const handleCommentAdded = (newComment: Post["comments"][0]) => {
+    if (!activePost) return;
+    setPosts(prev =>
+      prev.map(post =>
+        post._id === activePost._id
+          ? { ...post, comments: [...post.comments, newComment] }
+          : post
+      )
+    );
+  };
 
- 
+  const handleDeletePost = async (postId: string) => {
+    if (!user) return;
+    
+    if (!confirm("Are you sure you want to delete this post?")) return;
+
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      if (!res.ok) throw new Error("Failed to delete");
+
+      toast({
+        title: "Post Deleted",
+        description: "Your post has been removed.",
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Could not delete post.",
+      });
+    }
+  };
+
+  const handleEditPost = (post: Post) => {
+    setEditingPost(post);
+    setOpenEditModal(true);
+  };
+
+  const handlePostUpdated = (updatedPost: Post) => {
+    setPosts(prev => prev.map(p => p._id === updatedPost._id ? updatedPost : p));
+  };
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -243,10 +286,32 @@ const handleCommentAdded = (newComment: Post["comments"][0]) => {
             </p>
           </div>
         </div>
-        <Badge variant={categoryConfig.color as any}>
-          <CategoryIcon className="h-3 w-3 mr-1" />
-          {categoryConfig.label}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={categoryConfig.color as any}>
+            <CategoryIcon className="h-3 w-3 mr-1" />
+            {categoryConfig.label}
+          </Badge>
+          {user && post.userId._id === user.id && (
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handleEditPost(post)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                onClick={() => handleDeletePost(post._id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       <p className="text-foreground mb-4">{post.description}</p>
@@ -333,19 +398,30 @@ const handleCommentAdded = (newComment: Post["comments"][0]) => {
         )}
         
       </div>
-    {openCommentModal && activePost && (
-  <CommentModal
-    post={activePost}
-    user={user}
-    onClose={() => {
-      setOpenCommentModal(false);
-      setActivePost(null);
-    }}
-    onCommentAdded={handleCommentAdded} // ← NEW
-  />
-)}
+      {openCommentModal && activePost && (
+        <CommentModal
+          post={activePost}
+          user={user}
+          onClose={() => {
+            setOpenCommentModal(false);
+            setActivePost(null);
+          }}
+          onCommentAdded={handleCommentAdded}
+        />
+      )}
 
-
+      {openEditModal && editingPost && user && (
+        <EditPostModal
+          isOpen={openEditModal}
+          onClose={() => {
+            setOpenEditModal(false);
+            setEditingPost(null);
+          }}
+          post={editingPost}
+          user={user}
+          onPostUpdated={handlePostUpdated}
+        />
+      )}
     </div>
   );
 }
