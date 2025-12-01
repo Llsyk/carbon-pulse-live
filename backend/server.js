@@ -130,6 +130,18 @@ function makeToken(user) {
   });
 }
 
+// Calculate distance between two coordinates using Haversine formula (returns km)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 // --- Routes ---
 app.get("/", (req, res) => res.send("AQI API OK"));
 
@@ -354,6 +366,55 @@ app.post("/api/posts/create", upload.single("image"), async (req, res) => {
     );
 
     io.emit("new-post", populatedPost);
+
+    // Send email alerts to nearby users
+    const ALERT_RADIUS_KM = 20; // Alert users within 20km
+    const postLat = parseFloat(latitude);
+    const postLon = parseFloat(longitude);
+    
+    // Find all users who want email notifications (excluding post author)
+    const allUsers = await User.find({ 
+      _id: { $ne: userId },
+      'health.notifyBy': 'email'
+    });
+
+    const nearbyUsers = allUsers.filter(u => {
+      if (u.health?.lat && u.health?.lng) {
+        const distance = calculateDistance(postLat, postLon, u.health.lat, u.health.lng);
+        return distance <= ALERT_RADIUS_KM;
+      }
+      return false;
+    });
+
+    // Send emails asynchronously (don't block response)
+    if (nearbyUsers.length > 0) {
+      setImmediate(async () => {
+        for (const nearbyUser of nearbyUsers) {
+          try {
+            const distance = calculateDistance(postLat, postLon, nearbyUser.health.lat, nearbyUser.health.lng);
+            
+            await sendManualAlert(nearbyUser, {
+              subject: `⚠️ New ${category} incident near your location`,
+              customMessage: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h2 style="color: #0B74D1;">New Incident Alert</h2>
+                  <p>A <strong>${category}</strong> incident was reported near your location:</p>
+                  <div style="background: #F6FAFF; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <p><strong>📍 Location:</strong> ${location}</p>
+                    <p><strong>📝 Description:</strong> ${description}</p>
+                    <p><strong>📏 Distance:</strong> ~${distance.toFixed(1)}km from your registered location</p>
+                  </div>
+                  <p style="margin-top: 20px; color: #666;">Stay safe and check the community page for more details.</p>
+                </div>
+              `
+            });
+            console.log(`✓ Sent alert to ${nearbyUser.email} (${distance.toFixed(1)}km away)`);
+          } catch (emailErr) {
+            console.error(`✗ Failed to send email to ${nearbyUser.email}:`, emailErr.message);
+          }
+        }
+      });
+    }
 
     return res.status(201).json({
       message: "Post created",
