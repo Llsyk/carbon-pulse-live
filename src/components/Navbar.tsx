@@ -2,18 +2,23 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import logo from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
-import { CircleUserRound } from "lucide-react";
+import { CircleUserRound, TreePine, FileText } from "lucide-react";
+import { usePostCount } from "@/hooks/usePostCount";
+import UserStatsModal from "@/components/UserStatsModal";
 
 export default function Navbar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
+  const [showStatsModal, setShowStatsModal] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) 
       setUser(JSON.parse(storedUser));
   }, []);
+
+  const { postCount, treesPlanted } = usePostCount(user?.id || null);
   const active = (p: string) => (pathname === p ? "ring-2 ring-white/60" : "");
 
   const logout = () => {
@@ -64,15 +69,41 @@ export default function Navbar() {
           )}
           {user && (
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowStatsModal(true)}
+                className="flex items-center gap-3 bg-gradient-to-r from-green-500/20 to-blue-500/20 px-4 py-2 rounded-full hover:from-green-500/30 hover:to-blue-500/30 transition-all border border-white/20"
+                title="View your stats"
+              >
+                <div className="flex items-center gap-1.5">
+                  <FileText className="w-4 h-4" />
+                  <span className="text-sm font-semibold">{postCount}</span>
+                </div>
+                <div className="w-px h-4 bg-white/30" />
+                <div className="flex items-center gap-1.5">
+                  <TreePine className="w-4 h-4" />
+                  <span className="text-sm font-semibold">{treesPlanted}</span>
+                </div>
+              </button>
+
               <div className="flex items-center gap-2 bg-blue-700/40 px-3 py-1 rounded-full">
                 <CircleUserRound className="w-5 h-5"/>
-                <span className ="text-sm">{user.email}</span>
-        </div>
+                
+              </div>
       
-      <Button onClick={logout} variant="secondary" className ="bg-white text-blue-700 hover:bg-blue-50">
-        Logout
-      </Button>
-      </div>      
+              <Button onClick={logout} variant="secondary" className="bg-white text-blue-700 hover:bg-blue-50">
+                Logout
+              </Button>
+            </div>      
+          )}
+          
+          {user && (
+            <UserStatsModal
+              isOpen={showStatsModal}
+              onClose={() => setShowStatsModal(false)}
+              userName={user.name || user.email}
+              postCount={postCount}
+              treesPlanted={treesPlanted}
+            />
           )}
         </div>
       </div>

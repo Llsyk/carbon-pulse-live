@@ -13,6 +13,7 @@ import { Server as SocketServer } from "socket.io"; // <-- socket.io
 import User from "./models/User.js";
 import requireAuth from "./middleware/requireAuth.js";
 import Post from "./models/Post.js";
+import { sendIncidentAlert } from "./utils/incidentNotifier.js";
 
 // email notifier + scheduler functions
 import emailNotifier, {
@@ -128,6 +129,18 @@ function makeToken(user) {
   return jwt.sign({ uid: user._id, email: user.email }, JWT_SECRET, {
     expiresIn: "7d",
   });
+}
+
+// Calculate distance between two coordinates using Haversine formula (returns km)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 // --- Routes ---
@@ -355,6 +368,47 @@ app.post("/api/posts/create", upload.single("image"), async (req, res) => {
 
     io.emit("new-post", populatedPost);
 
+    // Send email alerts to nearby users
+    const ALERT_RADIUS_KM = 20; // Alert users within 20km
+    const postLat = parseFloat(latitude);
+    const postLon = parseFloat(longitude);
+    
+    // Find all users who want email notifications (excluding post author)
+    const allUsers = await User.find({ 
+      _id: { $ne: userId },
+      'health.notifyBy': 'email'
+    });
+
+    const nearbyUsers = allUsers.filter(u => {
+      if (u.health?.lat && u.health?.lng) {
+        const distance = calculateDistance(postLat, postLon, u.health.lat, u.health.lng);
+        return distance <= ALERT_RADIUS_KM;
+      }
+      return false;
+    });
+
+    // Send emails asynchronously (don't block response)
+    if (nearbyUsers.length > 0) {
+      setImmediate(async () => {
+        for (const nearbyUser of nearbyUsers) {
+          try {
+            const distance = calculateDistance(postLat, postLon, nearbyUser.health.lat, nearbyUser.health.lng);
+            
+           await sendIncidentAlert(nearbyUser, {
+  category,
+  location,
+  description,
+  distance: distance.toFixed(1)
+});
+
+            console.log(`✓ Sent alert to ${nearbyUser.email} (${distance.toFixed(1)}km away)`);
+          } catch (emailErr) {
+            console.error(`✗ Failed to send email to ${nearbyUser.email}:`, emailErr.message);
+          }
+        }
+      });
+    }
+
     return res.status(201).json({
       message: "Post created",
       post: populatedPost,
@@ -405,34 +459,85 @@ app.post("/api/posts/:postId/like", async (req, res) => {
 app.post("/api/posts/:id/comment", async (req, res) => {
   try {
     const { userId, text } = req.body;
+    const { id } = req.params;
 
-    if (!text || !userId)
-      return res.status(400).json({ message: "Missing fields" });
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const post = await Post.findById(req.params.id);
-
-    if (!post)
-      return res.status(404).json({ message: "Post not found" });
-
-    // SAFETY: Ensure comments is an array
-    if (!Array.isArray(post.comments)) {
-      post.comments = [];
-    }
-
-    // Push new comment
     post.comments.push({ userId, text });
-
     await post.save();
 
-    // Populate user names in comments
-    const populated = await post.populate("comments.userId", "name");
+    // Populate after save to get full user details
+    const populated = await Post.findById(id)
+      .populate("userId", "name")
+      .populate("comments.userId", "name");
 
+    // Emit real-time update
     io.emit("post-updated", populated);
 
     res.json({ message: "Comment added", post: populated });
   } catch (err) {
     console.error("Error adding comment:", err);
     res.status(500).json({ message: "Failed to add comment" });
+  }
+});
+
+// Edit post
+app.put("/api/posts/:id", upload.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, category, description, location, latitude, longitude } = req.body;
+    
+    const post = await Post.findById(id).populate("userId", "name");
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    // Check if user owns the post
+    if (post.userId._id.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to edit this post" });
+    }
+    
+    // Update fields
+    post.category = category;
+    post.description = description;
+    post.location = location;
+    post.latitude = parseFloat(latitude);
+    post.longitude = parseFloat(longitude);
+    
+    if (req.file) {
+      post.image = `/uploads/${req.file.filename}`;
+    }
+    
+    await post.save();
+    const updated = await Post.findById(id).populate("userId", "name").populate("comments.userId", "name");
+    
+    io.emit("post-updated", updated);
+    res.json({ message: "Post updated", post: updated });
+  } catch (err) {
+    console.error("Error updating post:", err);
+    res.status(500).json({ message: "Failed to update post" });
+  }
+});
+
+// Delete post
+app.delete("/api/posts/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+    
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    // Check if user owns the post
+    if (post.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to delete this post" });
+    }
+    
+    await Post.findByIdAndDelete(id);
+    io.emit("post-deleted", { postId: id });
+    res.json({ message: "Post deleted" });
+  } catch (err) {
+    console.error("Error deleting post:", err);
+    res.status(500).json({ message: "Failed to delete post" });
   }
 });
 
