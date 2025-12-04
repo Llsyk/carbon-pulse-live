@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Marker, Popup, useMapEvents, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import KPICard from "@/components/KPICard";
@@ -761,19 +761,28 @@ export default function CityExplorer() {
         {/* Fly to custom location */}
         {customLocation && <FlyToLocation lat={customLocation.lat} lng={customLocation.lng} />}
         
-        {/* Custom location marker */}
-        {customLocation && (
-          <Marker position={[customLocation.lat, customLocation.lng]}>
-            <Popup>
-              <div className="text-xs">
-                <div className="font-medium">{customLocation.name}</div>
-                {customLocation.aqi !== null && (
-                  <div>AQI: <b>{customLocation.aqi}</b> ({statusLabel[getStatusFromAQI(customLocation.aqi)]})</div>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        )}
+        {/* Custom location marker with AQI-based color */}
+        {customLocation && (() => {
+          const aqiStatus = customLocation.aqi !== null ? getStatusFromAQI(customLocation.aqi) : "good";
+          const m = toneClasses[aqiStatus].marker;
+          return (
+            <CircleMarker
+              center={[customLocation.lat, customLocation.lng]}
+              radius={12}
+              pathOptions={{ color: m.stroke, fillColor: m.fill, fillOpacity: 0.9, weight: 3 }}
+            >
+              <Tooltip direction="top" offset={[0, -4]} opacity={1}>
+                <div className="text-xs">
+                  <div className="font-medium">{customLocation.name}</div>
+                  {customLocation.aqi !== null && (
+                    <div className="mt-1">AQI: <b>{customLocation.aqi}</b> ({statusLabel[aqiStatus]})</div>
+                  )}
+                  {customLocation.pm25 !== null && <div>PM2.5: {customLocation.pm25?.toFixed(1)} µg/m³</div>}
+                </div>
+              </Tooltip>
+            </CircleMarker>
+          );
+        })()}
         
         {liveCities.map((c) => {
           const s = getStatusFromAQI(c.metrics.aqi);
