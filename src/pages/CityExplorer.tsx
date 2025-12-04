@@ -1,8 +1,25 @@
 import { useMemo, useState, useEffect } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import L from "leaflet";
 import KPICard from "@/components/KPICard";
 import SummaryTile from "@/components/SummaryTile";
+import { Search, MapPin, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+
+// Fix Leaflet default icon issue
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+// @ts-ignore
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 /** ---------------- Types ---------------- */
 type Status = "good" | "fair" | "moderate" | "poor" | "very_poor";
@@ -245,16 +262,20 @@ function Legend() {
   );
 }
 
-/** Controls overlay: Title + Time + Day + Apply */
 /** Controls overlay: Title + Time + Day + Apply (moved to top-right) */
 function Controls({
   formTime, setFormTime, formDay, setFormDay, onApply,
+  searchQuery, setSearchQuery, onSearch, searching,
 }: {
   formTime: string;
   setFormTime: (v: string) => void;
   formDay: string;
   setFormDay: (v: string) => void;
   onApply: () => void;
+  searchQuery: string;
+  setSearchQuery: (v: string) => void;
+  onSearch: () => void;
+  searching: boolean;
 }) {
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2 items-stretch">
@@ -262,6 +283,28 @@ function Controls({
         <h1 className="text-base md:text-lg font-semibold">
           Air Pollution — ASEAN Cities
         </h1>
+      </div>
+      {/* Search Location */}
+      <div className="rounded-lg bg-white/90 backdrop-blur px-3 py-2 shadow border">
+        <div className="flex items-center gap-2">
+          <Input
+            type="text"
+            placeholder="Search location (e.g., Yangon)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && onSearch()}
+            className="text-sm h-9"
+          />
+          <Button
+            size="sm"
+            onClick={onSearch}
+            disabled={searching || !searchQuery.trim()}
+            className="h-9 px-3"
+          >
+            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">Or tap on map to select location</p>
       </div>
       <div className="rounded-lg bg-white/90 backdrop-blur px-3 py-2 shadow border flex flex-wrap justify-end items-center gap-3">
         <label className="text-sm text-neutral-700">
@@ -294,6 +337,27 @@ function Controls({
       </div>
     </div>
   );
+}
+
+/** Map click handler component */
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+/** Fly to location component */
+function FlyToLocation({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (lat && lng) {
+      map.flyTo([lat, lng], 12, { animate: true });
+    }
+  }, [lat, lng, map]);
+  return null;
 }
 
 
@@ -465,47 +529,125 @@ export default function CityExplorer() {
   // Selection stores just the id; we read from predicted list
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Compute predicted cities when "Apply" changes parameters
-  // const predictedCities: City[] = useMemo(() => {
-  //   const dayNum = Number(appliedDay);
-  //   return ASEAN_CITIES.map(c => predictCity(c, dayNum, appliedTime));
-  // }, [appliedDay, appliedTime]);
+  // Search and custom location state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [customLocation, setCustomLocation] = useState<{
+    lat: number;
+    lng: number;
+    name: string;
+    aqi: number | null;
+    pm25: number | null;
+    no2: number | null;
+    o3: number | null;
+    co: number | null;
+    so2: number | null;
+    loading: boolean;
+  } | null>(null);
 
-  useEffect(() => {
-  const fetchData = async () => {
-    const results: City[] = [];
+  // Fetch AQI for a specific location
+  const fetchAQI = async (lat: number, lng: number, name: string) => {
+    setCustomLocation({
+      lat, lng, name,
+      aqi: null, pm25: null, no2: null, o3: null, co: null, so2: null,
+      loading: true
+    });
 
-    for (const city of ASEAN_CITIES) {
-      try {
-        const res = await fetch(
-          `http://localhost:5000/api/air/${city.lat}/${city.lng}`
-        );
-        const data = await res.json();
-
-        console.log("Fetched:", city.name, data);
-
-        results.push({
-          ...city,
-          metrics: {
-            ...city.metrics,
-            aqi: data.aqi,
-            pm25: data.pm25,
-            no2: data.no2,
-            o3: data.o3,
-          },
-        });
-      } catch (err) {
-        console.error("Fail:", city.name, err);
-        results.push(city); // fallback
-      }
+    try {
+      const res = await fetch(`http://localhost:5000/api/air/${lat}/${lng}`);
+      const data = await res.json();
+      setCustomLocation({
+        lat, lng, name,
+        aqi: data.aqi,
+        pm25: data.pm25,
+        no2: data.no2,
+        o3: data.o3,
+        co: data.co,
+        so2: data.so2,
+        loading: false
+      });
+    } catch (err) {
+      console.error("Failed to fetch AQI:", err);
+      setCustomLocation(prev => prev ? { ...prev, loading: false } : null);
     }
-
-    setLiveCities(results);
-    setLoading(false);
   };
 
-  fetchData();
-}, []);
+  // Handle map click
+  const handleMapClick = (lat: number, lng: number) => {
+    fetchAQI(lat, lng, `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+  };
+
+  // Handle search with viewport bias for ASEAN region
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+
+    try {
+      // Add viewbox bias for ASEAN region to get more relevant results
+      const viewbox = "92,-12,135,25"; // SW to NE of ASEAN
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&viewbox=${viewbox}&bounded=0&limit=5`
+      );
+      const data = await res.json();
+
+      if (data && data.length > 0) {
+        // Prefer results within ASEAN bounds
+        const aseanResult = data.find((r: any) => {
+          const lat = parseFloat(r.lat);
+          const lng = parseFloat(r.lon);
+          return lat >= -12 && lat <= 25 && lng >= 92 && lng <= 135;
+        }) || data[0];
+        
+        const { lat, lon, display_name } = aseanResult;
+        const parsedLat = parseFloat(lat);
+        const parsedLng = parseFloat(lon);
+        fetchAQI(parsedLat, parsedLng, display_name.split(",")[0]);
+      } else {
+        alert("Location not found. Please try a different search term.");
+      }
+    } catch (err) {
+      console.error("Search failed:", err);
+      alert("Search failed. Please try again.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const results: City[] = [];
+
+      for (const city of ASEAN_CITIES) {
+        try {
+          const res = await fetch(
+            `http://localhost:5000/api/air/${city.lat}/${city.lng}`
+          );
+          const data = await res.json();
+
+          console.log("Fetched:", city.name, data);
+
+          results.push({
+            ...city,
+            metrics: {
+              ...city.metrics,
+              aqi: data.aqi,
+              pm25: data.pm25,
+              no2: data.no2,
+              o3: data.o3,
+            },
+          });
+        } catch (err) {
+          console.error("Fail:", city.name, err);
+          results.push(city); // fallback
+        }
+      }
+
+      setLiveCities(results);
+      setLoading(false);
+    };
+
+    fetchData();
+  }, []);
 
   // Important!
   if (loading) return <p>Loading...</p>;
@@ -518,8 +660,7 @@ export default function CityExplorer() {
   const onApply = () => {
     setAppliedTime(formTime || "00:00");
     setAppliedDay(Number(formDay) as 1 | 2 | 3);
-    // if a city is open, keep it in sync with new predictions
-    setSelectedId(prev => prev); // no-op, but clarifies intent
+    setSelectedId(prev => prev);
   };
 
   return (
@@ -531,14 +672,118 @@ export default function CityExplorer() {
         formDay={formDay}
         setFormDay={setFormDay}
         onApply={onApply}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onSearch={handleSearch}
+        searching={searching}
       />
 
       {/* Legend */}
       <Legend />
 
+      {/* Custom Location Info Panel */}
+      {customLocation && (() => {
+        const aqiStatus = customLocation.aqi !== null ? getStatusFromAQI(customLocation.aqi) : "good";
+        const tone = toneClasses[aqiStatus];
+        return (
+          <div className={`absolute bottom-4 left-4 z-[1000] rounded-lg backdrop-blur px-4 py-3 shadow-lg border max-w-sm ring-2 ${tone.ring} ${tone.bg}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <MapPin className={`h-4 w-4 ${tone.text}`} />
+                <span className={`font-medium text-sm ${tone.text}`}>{customLocation.name}</span>
+              </div>
+              <button
+                onClick={() => setCustomLocation(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Lat: {customLocation.lat.toFixed(4)}, Lng: {customLocation.lng.toFixed(4)}
+            </div>
+            {customLocation.loading ? (
+              <div className="flex items-center gap-2 mt-2 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading AQI data...
+              </div>
+            ) : customLocation.aqi !== null ? (
+              <div className="mt-2 space-y-1">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className={`rounded px-2 py-1 ring-1 ${tone.ring} bg-white/60`}>
+                    <span className="text-muted-foreground">AQI:</span>{" "}
+                    <span className={`font-semibold ${tone.text}`}>{customLocation.aqi}</span>
+                    <span className={`text-xs ml-1 px-1.5 py-0.5 rounded-full ${tone.chip}`}>
+                      {statusLabel[aqiStatus]}
+                    </span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">PM2.5:</span>{" "}
+                    <span className="font-semibold">{customLocation.pm25?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">µg/m³</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">NO₂:</span>{" "}
+                    <span className="font-semibold">{customLocation.no2?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppb</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">O₃:</span>{" "}
+                    <span className="font-semibold">{customLocation.o3?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppb</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">CO:</span>{" "}
+                    <span className="font-semibold">{customLocation.co?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppm</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">SO₂:</span>{" "}
+                    <span className="font-semibold">{customLocation.so2?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppb</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-2 text-sm text-muted-foreground">Failed to load AQI data</div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Map */}
       <MapContainer bounds={mapBounds} scrollWheelZoom className="h-full w-full">
         <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        
+        {/* Map click handler */}
+        <MapClickHandler onMapClick={handleMapClick} />
+        
+        {/* Fly to custom location */}
+        {customLocation && <FlyToLocation lat={customLocation.lat} lng={customLocation.lng} />}
+        
+        {/* Custom location marker with AQI-based color */}
+        {customLocation && (() => {
+          const aqiStatus = customLocation.aqi !== null ? getStatusFromAQI(customLocation.aqi) : "good";
+          const m = toneClasses[aqiStatus].marker;
+          return (
+            <CircleMarker
+              center={[customLocation.lat, customLocation.lng]}
+              radius={12}
+              pathOptions={{ color: m.stroke, fillColor: m.fill, fillOpacity: 0.9, weight: 3 }}
+            >
+              <Tooltip direction="top" offset={[0, -4]} opacity={1}>
+                <div className="text-xs">
+                  <div className="font-medium">{customLocation.name}</div>
+                  {customLocation.aqi !== null && (
+                    <div className="mt-1">AQI: <b>{customLocation.aqi}</b> ({statusLabel[aqiStatus]})</div>
+                  )}
+                  {customLocation.pm25 !== null && <div>PM2.5: {customLocation.pm25?.toFixed(1)} µg/m³</div>}
+                </div>
+              </Tooltip>
+            </CircleMarker>
+          );
+        })()}
+        
         {liveCities.map((c) => {
           const s = getStatusFromAQI(c.metrics.aqi);
           const m = toneClasses[s].marker;
