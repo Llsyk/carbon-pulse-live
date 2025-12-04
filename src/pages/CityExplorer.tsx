@@ -577,19 +577,28 @@ export default function CityExplorer() {
     fetchAQI(lat, lng, `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
   };
 
-  // Handle search
+  // Handle search with viewport bias for ASEAN region
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
 
     try {
+      // Add viewbox bias for ASEAN region to get more relevant results
+      const viewbox = "92,-12,135,25"; // SW to NE of ASEAN
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&viewbox=${viewbox}&bounded=0&limit=5`
       );
       const data = await res.json();
 
       if (data && data.length > 0) {
-        const { lat, lon, display_name } = data[0];
+        // Prefer results within ASEAN bounds
+        const aseanResult = data.find((r: any) => {
+          const lat = parseFloat(r.lat);
+          const lng = parseFloat(r.lon);
+          return lat >= -12 && lat <= 25 && lng >= 92 && lng <= 135;
+        }) || data[0];
+        
+        const { lat, lon, display_name } = aseanResult;
         const parsedLat = parseFloat(lat);
         const parsedLng = parseFloat(lon);
         fetchAQI(parsedLat, parsedLng, display_name.split(",")[0]);
@@ -673,68 +682,74 @@ export default function CityExplorer() {
       <Legend />
 
       {/* Custom Location Info Panel */}
-      {customLocation && (
-        <div className="absolute bottom-4 left-4 z-[1000] rounded-lg bg-white/95 backdrop-blur px-4 py-3 shadow-lg border max-w-sm">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">{customLocation.name}</span>
+      {customLocation && (() => {
+        const aqiStatus = customLocation.aqi !== null ? getStatusFromAQI(customLocation.aqi) : "good";
+        const tone = toneClasses[aqiStatus];
+        return (
+          <div className={`absolute bottom-4 left-4 z-[1000] rounded-lg backdrop-blur px-4 py-3 shadow-lg border max-w-sm ring-2 ${tone.ring} ${tone.bg}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <MapPin className={`h-4 w-4 ${tone.text}`} />
+                <span className={`font-medium text-sm ${tone.text}`}>{customLocation.name}</span>
+              </div>
+              <button
+                onClick={() => setCustomLocation(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
             </div>
-            <button
-              onClick={() => setCustomLocation(null)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              ×
-            </button>
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Lat: {customLocation.lat.toFixed(4)}, Lng: {customLocation.lng.toFixed(4)}
-          </div>
-          {customLocation.loading ? (
-            <div className="flex items-center gap-2 mt-2 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading AQI data...
+            <div className="text-xs text-muted-foreground mt-1">
+              Lat: {customLocation.lat.toFixed(4)}, Lng: {customLocation.lng.toFixed(4)}
             </div>
-          ) : customLocation.aqi !== null ? (
-            <div className="mt-2 space-y-1">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="bg-muted/50 rounded px-2 py-1">
-                  <span className="text-muted-foreground">AQI:</span>{" "}
-                  <span className="font-semibold">{customLocation.aqi}</span>
-                  <span className="text-xs ml-1">({statusLabel[getStatusFromAQI(customLocation.aqi)]})</span>
-                </div>
-                <div className="bg-muted/50 rounded px-2 py-1">
-                  <span className="text-muted-foreground">PM2.5:</span>{" "}
-                  <span className="font-semibold">{customLocation.pm25?.toFixed(1)}</span>
-                  <span className="text-xs ml-1">µg/m³</span>
-                </div>
-                <div className="bg-muted/50 rounded px-2 py-1">
-                  <span className="text-muted-foreground">NO₂:</span>{" "}
-                  <span className="font-semibold">{customLocation.no2?.toFixed(1)}</span>
-                  <span className="text-xs ml-1">ppb</span>
-                </div>
-                <div className="bg-muted/50 rounded px-2 py-1">
-                  <span className="text-muted-foreground">O₃:</span>{" "}
-                  <span className="font-semibold">{customLocation.o3?.toFixed(1)}</span>
-                  <span className="text-xs ml-1">ppb</span>
-                </div>
-                <div className="bg-muted/50 rounded px-2 py-1">
-                  <span className="text-muted-foreground">CO:</span>{" "}
-                  <span className="font-semibold">{customLocation.co?.toFixed(1)}</span>
-                  <span className="text-xs ml-1">ppm</span>
-                </div>
-                <div className="bg-muted/50 rounded px-2 py-1">
-                  <span className="text-muted-foreground">SO₂:</span>{" "}
-                  <span className="font-semibold">{customLocation.so2?.toFixed(1)}</span>
-                  <span className="text-xs ml-1">ppb</span>
+            {customLocation.loading ? (
+              <div className="flex items-center gap-2 mt-2 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading AQI data...
+              </div>
+            ) : customLocation.aqi !== null ? (
+              <div className="mt-2 space-y-1">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className={`rounded px-2 py-1 ring-1 ${tone.ring} bg-white/60`}>
+                    <span className="text-muted-foreground">AQI:</span>{" "}
+                    <span className={`font-semibold ${tone.text}`}>{customLocation.aqi}</span>
+                    <span className={`text-xs ml-1 px-1.5 py-0.5 rounded-full ${tone.chip}`}>
+                      {statusLabel[aqiStatus]}
+                    </span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">PM2.5:</span>{" "}
+                    <span className="font-semibold">{customLocation.pm25?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">µg/m³</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">NO₂:</span>{" "}
+                    <span className="font-semibold">{customLocation.no2?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppb</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">O₃:</span>{" "}
+                    <span className="font-semibold">{customLocation.o3?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppb</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">CO:</span>{" "}
+                    <span className="font-semibold">{customLocation.co?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppm</span>
+                  </div>
+                  <div className="bg-white/60 rounded px-2 py-1">
+                    <span className="text-muted-foreground">SO₂:</span>{" "}
+                    <span className="font-semibold">{customLocation.so2?.toFixed(1)}</span>
+                    <span className="text-xs ml-1">ppb</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="mt-2 text-sm text-muted-foreground">Failed to load AQI data</div>
-          )}
-        </div>
-      )}
+            ) : (
+              <div className="mt-2 text-sm text-muted-foreground">Failed to load AQI data</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Map */}
       <MapContainer bounds={mapBounds} scrollWheelZoom className="h-full w-full">
