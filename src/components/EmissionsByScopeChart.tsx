@@ -1,52 +1,55 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-interface ScopesData { scope1: number; scope2: number; scope3: number; }
-interface Props { data: ScopesData; }
+export default function Last5DaysPollutantsChart({ data }) {
+  if (!data || data.length === 0)
+    return <div>No historical data available.</div>;
 
-const COLORS = {
-  scope1: "hsl(var(--destructive))",
-  scope2: "hsl(var(--warning))",
-  scope3: "hsl(var(--accent))",
-};
+  // Generate last 5 days dates because API doesn't give timestamps
+  const formattedData = data.map((d, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (data.length - 1 - i));
 
-const EmissionsByScopeChart = ({ data }: Props) => {
-  const chartData = [
-    { name: "Scope 1", value: data.scope1 * 100, color: COLORS.scope1 },
-    { name: "Scope 2", value: data.scope2 * 100, color: COLORS.scope2 },
-    { name: "Scope 3", value: data.scope3 * 100, color: COLORS.scope3 },
-  ];
+    return {
+      ...d,
+      date: date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric"
+      })
+    };
+  });
 
   return (
-    <Card id="chart-by-scope" className="shadow-card">
-      <CardHeader><CardTitle>Emissions by Scope</CardTitle></CardHeader>
+    <Card className="shadow-card">
+      <CardHeader>
+        <CardTitle>Pollutant Levels — Last 10 Days</CardTitle>
+      </CardHeader>
+
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={chartData}
-              cx="50%" cy="50%"
-              innerRadius={60} outerRadius={90}
-              paddingAngle={4}
-              dataKey="value"
-              label={({ name, value }) => `${name}: ${value.toFixed(0)}%`}
-            >
-              {chartData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
-            </Pie>
-            <Tooltip
-              formatter={(value: number) => `${value.toFixed(1)}%`}
-              contentStyle={{
-                backgroundColor: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: "8px",
-              }}
-            />
-            <Legend />
-          </PieChart>
+        <ResponsiveContainer width="100%" height={350}>
+          <LineChart data={formattedData}>
+          <XAxis dataKey="date" />
+          <YAxis
+            label={{
+              value: "µg/m³",
+              angle: -90,
+              position: "insideLeft",
+              style: { textAnchor: "middle" }
+            }}
+          />
+          <Tooltip />
+          <Legend />
+
+          <Line type="monotone" dataKey="pm25" name="PM2.5" stroke="#ff6384" />
+          <Line type="monotone" dataKey="pm10" name="PM10" stroke="#36a2eb" />
+          <Line type="monotone" dataKey="no2"  name="NO₂"  stroke="#ffce56" />
+          <Line type="monotone" dataKey="o3"   name="O₃"   stroke="#4bc0c0" />
+          <Line type="monotone" dataKey="co"   name="CO"   stroke="#9966ff" />
+          <Line type="monotone" dataKey="so2"  name="SO₂"  stroke="#ff9f40" />
+        </LineChart>
+
         </ResponsiveContainer>
       </CardContent>
     </Card>
   );
-};
-
-export default EmissionsByScopeChart;
+}
