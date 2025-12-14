@@ -11,6 +11,7 @@ const HealthSchema = new mongoose.Schema({
   pregnant: { type: String, enum: ["no", "yes", ""], default: "" },
   aqiThreshold: { type: Number, default: 100 },
   notifyBy: { type: String, enum: ["email", "sms", "push"], default: "email" },
+  phone: {type: String, default: ""},
   outings: { type: [String], default: [] },
   lastNotified: {
     type: Map,

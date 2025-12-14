@@ -1,15 +1,56 @@
 // backend/utils/emailNotifier.js
+
 import nodemailer from "nodemailer";
+import twilio from "twilio";
 import User from "../models/User.js";
 import cron from "node-cron";
 
-/**
- * 🔧 Create a Gmail transporter dynamically
- */
+/* ──────────────────── EASY SEND SMS ──────────────────── */
+
+async function sendEasySendSMS(phone, message) {
+  if (!phone) {
+    console.warn("⚠️ No phone number provided");
+    return null;
+  }
+
+  try {
+    const res = await fetch("https://my.easysendsms.app/api/send-sms", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.EASYSENDSMS_API_KEY}`,
+      },
+      body: JSON.stringify({
+        to: phone,
+        message,
+        sender: "CypherX",
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.message || "SMS API error");
+    }
+
+    console.log(`📱 SMS sent → ${phone}`);
+    return data;
+  } catch (err) {
+    console.error("❌ EasySendSMS failed:", err.message);
+    return null;
+  }
+}
+
+/* ──────────────────── MAILER ──────────────────── */
+
 function makeTransporter() {
   const user = process.env.EMAIL_USER;
   const pass = process.env.EMAIL_PASS;
-  if (!user || !pass) throw new Error("Missing EMAIL_USER or EMAIL_PASS in .env");
+
+  if (!user || !pass) {
+    throw new Error("❌ EMAIL_USER or EMAIL_PASS missing in .env");
+  }
+
   return nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 465,
@@ -18,268 +59,301 @@ function makeTransporter() {
   });
 }
 
-/** ✅ Verify mailer connectivity */
 export async function verifyMailer() {
   try {
     const transporter = makeTransporter();
     await transporter.verify();
-    console.log("✅ Mailer ready (Gmail SMTP)");
+    console.log("✅ Gmail SMTP verified");
   } catch (err) {
-    console.error("Mailer verify failed:", err.message);
+    console.error("❌ Gmail verification failed:", err.message);
   }
 }
 
-/** ✉️ Internal: Send email to a user */
+/* ──────────────────── TWILIO ──────────────────── */
+
+function makeTwilioClient() {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+
+  if (!sid || !token) {
+    throw new Error("❌ Twilio credentials missing");
+  }
+
+  return twilio(sid, token);
+}
+
+/* ──────────────────── INTERNAL SENDERS ──────────────────── */
+
 async function sendMail(user, subject, html) {
   if (!user?.email) {
-    console.warn("⚠️ No email found for this user:", user?._id || "unknown user");
+    console.warn("⚠️ No email for user:", user?._id);
     return null;
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(user.email)) {
-    console.warn("⚠️ Invalid email format:", user.email);
+    console.warn("⚠️ Invalid email:", user.email);
     return null;
   }
 
   try {
     const transporter = makeTransporter();
-    const mailOptions = {
-      from: `"CypherX AQI" <${process.env.EMAIL_USER}>`,
+    const info = await transporter.sendMail({
+      from: `"CypherX Health Monitor" <${process.env.EMAIL_USER}>`,
       to: user.email,
       subject,
       html,
-    };
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`📧 Sent to ${user.email} — messageId: ${info.messageId}`);
+    });
+
+    console.log(`📧 Email sent → ${user.email}`);
     return info;
   } catch (err) {
-    console.error("❌ Failed to send email to", user.email, err.message);
+    console.error("❌ Email send failed:", err.message);
     return null;
   }
 }
 
-/**
- * 🧪 Manual alert: send test email to user
- */
+async function sendSMS(user, message) {
+  if (!user?.health?.phone) return null;
+
+  try {
+    const client = makeTwilioClient();
+    return await client.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: user.health.phone,
+    });
+  } catch (err) {
+    console.error("❌ SMS send failed:", err.message);
+    return null;
+  }
+}
+
+/* ──────────────────── MAIN ALERT ──────────────────── */
+
 export async function sendManualAlert(user, opts = {}) {
-  if (!user?.email) {
-    console.warn("⚠️ No email found for this user:", user?._id || "unknown user");
-    return null;
-  }
+  if (!user) return null;
 
- const userName = user.name || "User";
-const city = user.health?.city || "your city";
-const aqi = opts.aqi || 150;
-const scheduledAt = opts.scheduledAt || "your outing time";
-const threshold = user.health?.aqiThreshold || 100;
-const conditions = user.health?.conditions || [];
+  const name = user.name || "User";
+  const city = user.health?.city || "your area";
+  const notifyBy = user.health?.notifyBy || "email";
+  const scheduledAt = opts.scheduledAt || "now";
 
-// 🩺 Add custom advice based on health conditions
-let conditionAdvice = "";
-if (conditions.includes("asthma")) {
-  conditionAdvice += `
-    <li><strong>Asthma alert:</strong> Poor air quality can trigger asthma attacks. 
-    Please carry your inhaler and avoid strenuous outdoor activity.</li>
-  `;
-}
-if (conditions.includes("allergies")) {
-  conditionAdvice += `
-    <li><strong>Allergy warning:</strong> High pollution can worsen allergy symptoms. 
-    Try to stay indoors and use an air purifier if possible.</li>
-  `;
-}
-if (!conditionAdvice) {
-  conditionAdvice = `
-    <li>Maintain hydration and limit time outdoors during high AQI levels.</li>
-  `;
-}
+  let aqi = Number(opts.currentAQI ?? 3);
+  if (aqi < 1) aqi = 1;
+  if (aqi > 5) aqi = 5;
 
-// 🧠 Set AQI level message
-let aqiStatus = "Moderate";
-if (aqi > 200) aqiStatus = "Very Unhealthy";
-else if (aqi > 150) aqiStatus = "Unhealthy";
-else if (aqi > 100) aqiStatus = "Sensitive";
-else if (aqi <= 100) aqiStatus = "Good";
+  const aqiMap = {
+    1: { label: "Good", desc: "Air quality is healthy and safe." },
+    2: { label: "Fair", desc: "Minor air quality concern." },
+    3: { label: "Moderate", desc: "Sensitive individuals should take care." },
+    4: { label: "Poor", desc: "Health effects may occur." },
+    5: { label: "Very Poor", desc: "Serious health risks for everyone." },
+  };
 
-const html = `
-  <div style="font-family: Arial, sans-serif; color: #333;">
-    <h2 style="color: #d9534f;">🌫️ Air Quality Alert — Stay Safe, ${userName}!</h2>
+  const aqiInfo = aqiMap[aqi];
 
-    <p>Dear ${userName},</p>
+  /* ───────────── EMAIL TEMPLATE ───────────── */
+
+  const html = `
+  <div style="font-family: Arial, sans-serif; color:#333; line-height:1.6">
+    <h2 style="color:#c0392b">🌫️ Air Quality Alert — Stay Safe, ${name}!</h2>
+
+    <p>Dear <b>${name}</b>,</p>
 
     <p>
-      We’ve detected that the air quality in <strong>${city}</strong> is currently 
-      at <strong>${aqi}</strong> AQI (<strong>${aqiStatus}</strong> level), 
-      which is above your preferred threshold of ${threshold}.
-      Since you’re planning to go out around <strong>${scheduledAt}</strong>, 
-      please take extra care.
+      We’ve detected that the air quality in <b>${city}</b> is currently at
+      <b>AQI Level ${aqi} (${aqiInfo.label})</b>.
     </p>
 
-    <p><strong>Health-specific recommendations:</strong></p>
+    <p>
+      This level indicates that <b>${aqiInfo.desc}</b>
+      ${aqi >= 4 ? " and extra precautions are strongly recommended." : ""}
+    </p>
+
+    <p>
+      Since you’re planning to go out around <b>${scheduledAt}</b>,
+      please take the following health precautions:
+    </p>
+
     <ul>
-      ${conditionAdvice}
-      <li>Always wear a protective mask (N95/KN95) when outdoors.</li>
-      <li>Keep windows closed to reduce indoor air pollution.</li>
-      <li>Check AQI updates frequently before your outings.</li>
+      <li>💧 Maintain proper hydration</li>
+      <li>😷 Wear a protective mask (N95 / KN95)</li>
+      <li>🏠 Keep windows closed to reduce indoor pollution</li>
+      <li>📱 Monitor AQI updates before heading outdoors</li>
     </ul>
 
     <p>
-      <em>Your wellbeing is our top priority. Please stay cautious and take care of yourself during poor air conditions.</em>
+      Your wellbeing is our top priority. Please stay cautious and take care of
+      yourself during poor air conditions.
     </p>
 
-    <p>Warm regards,<br>
-    <strong>CypherX Health Monitor</strong></p>
+    <p>
+      Warm regards,<br/>
+      <b>CypherX Health Monitor</b>
+    </p>
   </div>
-`;
+  `;
 
+  const sms = `🌫️ Air Quality Alert
+City: ${city}
+AQI: ${aqi}/5 (${aqiInfo.label})
+Time: ${scheduledAt}
+Please take precautions.`;
 
+  if (notifyBy === "sms") {
+    await sendSMS(user, sms);
+  } else {
+    await sendMail(
+      user,
+      `🌫️ Air Quality Alert — Stay Safe, ${name}`,
+      html
+    );
+  }
 
-  await sendMail(user, `⚠️ AQI Alert — ${user.health?.city || "Test City"}`, html);
-  console.log(`✅ Manual alert sent to ${user.email}`);
   return true;
 }
 
-/**
- * Outing scheduler management
- *
- * We'll keep an in-memory map of cron jobs for each user so we can cancel/reschedule.
- * NOTE: In-memory map is fine for single server. For horizontal scaling you'd persist schedules elsewhere.
- */
-const userCronJobs = new Map(); // userId => [cronJob, cronJob, ...]
+/* ──────────────────── DAILY EMAILS ──────────────────── */
 
-/** Helper: parse HH:MM string to {hour, minute} or null */
-function parseHHMM(hhmm) {
-  if (!hhmm || typeof hhmm !== "string") return null;
-  const m = hhmm.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const hour = Number(m[1]);
-  const minute = Number(m[2]);
-  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  return { hour, minute };
-}
-
-/**
- * Schedule outing alerts for a single user.
- * Cancels any existing jobs for that user first.
- *
- * - user: mongoose document or object with _id and health.outings (array of "HH:MM")
- */
-export function scheduleOutingAlertsForUser(user) {
-  if (!user || !user._id) {
-    console.warn("scheduleOutingAlertsForUser: invalid user", user);
-    return;
-  }
-  const userId = String(user._id);
-
-  // Cancel any existing jobs for this user
-  cancelOutingAlertsForUser(userId);
-
-  const outings = Array.isArray(user.health?.outings) ? user.health.outings : [];
-  const jobs = [];
-
-  outings.forEach((timeStr) => {
-    const parsed = parseHHMM(timeStr);
-    if (!parsed) {
-      console.warn(`Invalid outing time for user ${userId}:`, timeStr);
-      return;
-    }
-    const { hour, minute } = parsed;
-    // cron format: minute hour day month dayOfWeek
-    const cronExpr = `${minute} ${hour} * * *`;
-    const job = cron.schedule(
-      cronExpr,
-      async () => {
-        try {
-          console.log(`🔔 Running scheduled outing alert for user ${userId} at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
-          // Refresh user from DB in case data changed (ensure latest email etc.)
-          const freshUser = await User.findById(userId);
-          if (!freshUser) {
-            console.warn("User not found when running scheduled job:", userId);
-            return;
-          }
-          await sendManualAlert(freshUser, { scheduledAt: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}` });
-        } catch (e) {
-          console.error("Error in scheduled outing alert:", e?.message || e);
-        }
-      },
-      {
-        scheduled: true,
-        timezone: "Asia/Yangon",
-      }
-    );
-    jobs.push(job);
-    console.log(`Scheduled outing for user ${userId} at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} (cron: ${cronExpr})`);
-  });
-
-  if (jobs.length) userCronJobs.set(userId, jobs);
-  return jobs;
-}
-
-/** Cancel all scheduled outing jobs for a given user id */
-export function cancelOutingAlertsForUser(userId) {
-  if (!userId) return;
-  const existing = userCronJobs.get(String(userId));
-  if (!existing) return;
-  existing.forEach((j) => {
-    try {
-      j.stop();
-    } catch (e) {
-      console.warn("Error stopping cron job:", e?.message || e);
-    }
-  });
-  userCronJobs.delete(String(userId));
-  console.log(`Cancelled ${existing.length} outing job(s) for user ${userId}`);
-}
-
-/**
- * Start schedules for all users on startup.
- * Scans DB for users that use email notifications and have outings.
- */
-export async function startAllOutingSchedules() {
+export async function sendDailyPredictionEmails() {
   try {
     const users = await User.find({ "health.notifyBy": "email" });
-    console.log(`Scheduling outings for ${users.length} users...`);
     for (const u of users) {
-      if (Array.isArray(u.health?.outings) && u.health.outings.length > 0) {
-        scheduleOutingAlertsForUser(u);
-      }
+      await sendManualAlert(u, { scheduledAt: "today" });
     }
-    console.log("✅ Completed scheduling user outings.");
-  } catch (e) {
-    console.error("Failed to schedule user outings:", e?.message || e);
+  } catch (err) {
+    console.error("❌ Daily prediction failed:", err.message);
   }
 }
 
-/**
- * Optional: Start a single daily cron that sends a test alert to all email users (kept for backward compatibility)
- */
+/* ──────────────────── OUTING SCHEDULER ──────────────────── */
+
+const userCronJobs = new Map();
+
+function parseHHMM(hhmm) {
+  const m = hhmm?.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return { hour: +m[1], minute: +m[2] };
+}
+
+export function scheduleOutingAlertsForUser(user) {
+  if (!user?._id) return;
+
+  cancelOutingAlertsForUser(user._id);
+
+  const outings = user.health?.outings || [];
+  const jobs = [];
+
+  outings.forEach((time) => {
+    const t = parseHHMM(time);
+    if (!t) return;
+
+    const job = cron.schedule(
+      `${t.minute} ${t.hour} * * *`,
+      async () => {
+        const freshUser = await User.findById(user._id);
+        if (freshUser) {
+          await sendManualAlert(freshUser, { scheduledAt: time });
+        }
+      },
+      { timezone: "Asia/Yangon" }
+    );
+
+    jobs.push(job);
+  });
+
+  if (jobs.length) userCronJobs.set(String(user._id), jobs);
+}
+
+export function cancelOutingAlertsForUser(userId) {
+  const jobs = userCronJobs.get(String(userId));
+  if (!jobs) return;
+  jobs.forEach((j) => j.stop());
+  userCronJobs.delete(String(userId));
+}
+
+export async function startAllOutingSchedules() {
+  const users = await User.find({ "health.outings.0": { $exists: true } });
+  users.forEach(scheduleOutingAlertsForUser);
+}
+
+/* ──────────────────── 1-HOUR-BEFORE OUTING ALERT ──────────────────── */
+
+const preOutingJobs = new Map();
+
+function minusOneHour({ hour, minute }) {
+  let h = hour - 1;
+  if (h < 0) h = 23;
+  return { hour: h, minute };
+}
+
+export function schedulePreOutingAlert(user) {
+  if (!user?._id) return;
+
+  cancelPreOutingAlert(user._id);
+
+  const timeStr = user.health?.usualOutingTime;
+  const parsed = parseHHMM(timeStr);
+  if (!parsed) return;
+
+  const notifyTime = minusOneHour(parsed);
+
+  const job = cron.schedule(
+    `${notifyTime.minute} ${notifyTime.hour} * * *`,
+    async () => {
+      const freshUser = await User.findById(user._id);
+      if (freshUser) {
+        await sendManualAlert(freshUser, {
+          scheduledAt: `around ${timeStr}`,
+        });
+      }
+    },
+    { timezone: "Asia/Yangon" }
+  );
+
+  preOutingJobs.set(String(user._id), job);
+}
+
+export function cancelPreOutingAlert(userId) {
+  const job = preOutingJobs.get(String(userId));
+  if (job) job.stop();
+  preOutingJobs.delete(String(userId));
+}
+
+export async function startAllPreOutingAlerts() {
+  const users = await User.find({ "health.usualOutingTime": { $exists: true } });
+  users.forEach(schedulePreOutingAlert);
+}
+
+/* ──────────────────── OPTIONAL DAILY TEST ──────────────────── */
+
 export function startDailyManualAlert(enabled = false) {
   if (!enabled) return;
+
   cron.schedule(
-    "30 6 * * *", // 06:30 Asia/Yangon
+    "30 6 * * *",
     async () => {
-      try {
-        console.log("🔔 Sending daily manual alerts to all users...");
-        const users = await User.find({ "health.notifyBy": "email" });
-        for (const u of users) {
-          await sendManualAlert(u, { scheduledAt: "06:30" });
-        }
-      } catch (e) {
-        console.error("❌ Daily manual alert failed:", e.message);
+      const users = await User.find({ "health.notifyBy": "email" });
+      for (const u of users) {
+        await sendManualAlert(u, { scheduledAt: "06:30" });
       }
     },
     { timezone: "Asia/Yangon" }
   );
 }
 
-// Export existing API plus new scheduling functions
+/* ──────────────────── EXPORT ──────────────────── */
+
 export default {
   sendManualAlert,
+  sendDailyPredictionEmails,
   verifyMailer,
   startDailyManualAlert,
   scheduleOutingAlertsForUser,
   cancelOutingAlertsForUser,
   startAllOutingSchedules,
+  schedulePreOutingAlert,
+  cancelPreOutingAlert,
+  startAllPreOutingAlerts,
 };

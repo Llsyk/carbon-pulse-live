@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import cron from "node-cron";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -19,10 +20,13 @@ import { sendIncidentAlert } from "./utils/incidentNotifier.js";
 import emailNotifier, {
   scheduleOutingAlertsForUser,
   startAllOutingSchedules,
+  startAllPreOutingAlerts,   // ✅ ADD THIS
   verifyMailer,
   sendManualAlert,
+  sendDailyPredictionEmails,
   cancelOutingAlertsForUser,
 } from "./utils/emailNotifier.js";
+
 
 dotenv.config();
 
@@ -40,34 +44,28 @@ const io = new SocketServer(server, {
 });
 // --- Multer: File Upload Storage ---
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/"); // folder must exist
-  },
+  destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, Date.now() + ext); // unique filename
+    cb(null, Date.now() + ext);
   },
 });
 
 const upload = multer({ storage });
 app.use("/uploads", express.static("uploads"));
 
-// --- Socket.IO: log connections ---
+// --- Socket.IO ---
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
-
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
   });
 });
-// --- CORS: allow your frontend origins (8080 + 127.0.0.1) ---
+
+// --- CORS ---
 app.use(
   cors({
-    origin: [
-      "http://localhost:8080",
-      "http://127.0.0.1:8080",
-      // add LAN origin if needed
-    ],
+    origin: ["http://localhost:8080", "http://127.0.0.1:8080"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -86,43 +84,14 @@ mongoose
   .then(async () => {
     console.log("✅ MongoDB connected");
 
-    // verify mailer connectivity
-    try {
-      await verifyMailer();
-    } catch (e) {
-      console.warn("Mailer verification failed on startup:", e?.message || e);
-    }
+    await verifyMailer();
+    await startAllOutingSchedules();     // existing
+    await startAllPreOutingAlerts();     // ✅ NEW (1-hour-before alerts)
 
-    // schedule existing users' outings
-    try {
-      await startAllOutingSchedules();
-    } catch (e) {
-      console.error("Failed to start outing schedules:", e?.message || e);
-    }
-
-    // Optionally send a single test email on startup if you explicitly enable it
-    // Set SEND_STARTUP_TEST_EMAIL=true in your .env to enable (will send to first user found)
-    if (process.env.SEND_STARTUP_TEST_EMAIL === "true") {
-      try {
-        const anyUser = await User.findOne();
-        if (anyUser) {
-          console.log("Sending startup test email to", anyUser.email);
-          await sendManualAlert(anyUser, { scheduledAt: "startup-test" });
-        } else {
-          console.log("No users in DB to send startup test email.");
-        }
-      } catch (e) {
-        console.error("Startup test email failed:", e?.message || e);
-      }
-    }
-
-    // start listening after DB + scheduler are ready
-    server.listen(PORT, () => console.log(`🚀 API on http://localhost:${PORT}`));
+    server.listen(PORT, () =>
+      console.log(`🚀 API on http://localhost:${PORT}`)
+    );
   })
-  .catch((e) => {
-    console.error("❌ Mongo error", e);
-    process.exit(1);
-  });
 
 // --- Helpers ---
 function makeToken(user) {
@@ -241,6 +210,7 @@ app.post("/api/auth/signup", async (req, res) => {
       aqiThreshold: Number(health.aqiThreshold ?? 100),
       notifyBy: health.notifyBy ?? "email",
       outings,
+      phone: account.phone ?? "",
     };
     const user = await User.create({
       name,
@@ -320,6 +290,49 @@ app.post("/api/notify/email", requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Test route: Trigger daily prediction emails
+app.post("/api/test/daily-predictions", async (req, res) => {
+  try {
+    console.log("Manually triggering daily prediction emails...");
+    await sendDailyPredictionEmails();
+    return res.json({ message: "Daily prediction emails sent" });
+  } catch (e) {
+    console.error("Error sending daily predictions:", e);
+    return res.status(500).json({ error: "Failed to send daily predictions" });
+  }
+});
+
+// Test route: Send prediction alert to a specific user
+app.post("/api/test/user-prediction/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    await sendManualAlert(user, { scheduledAt: "test-prediction" });
+    return res.json({ message: `Prediction sent to ${user.name} via ${user.health.notifyBy}` });
+  } catch (e) {
+    console.error("Error sending user prediction:", e);
+    return res.status(500).json({ error: "Failed to send prediction" });
+  }
+});
+
+/* ------------ FIXED EMAIL ROUTE ------------ */
+app.post("/api/predict/send-email", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId); // ✅ FIX
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await sendManualAlert(user, { scheduledAt: "manual-predict" });
+    return res.json({ message: "Prediction sent to your email" });
+  } catch (e) {
+    console.error("Error sending prediction:", e);
+    return res.status(500).json({ error: "Failed to send prediction" });
   }
 });
 app.get("/api/posts", async (req, res) => {
@@ -550,5 +563,17 @@ app.delete("/api/posts/:id", async (req, res) => {
   - This scheduling uses an in-memory map (suitable for single-instance deployments).
     For multiple instances you should centralize scheduling (e.g., Redis queue / worker).
 */
+
+// Schedule daily prediction emails at 8 AM
+cron.schedule("0 8 * * *", async () => {
+  console.log("⏰ Running daily prediction email job...");
+  try {
+    await sendDailyPredictionEmails();
+  } catch (err) {
+    console.error("Error in daily prediction emails:", err);
+  }
+}, {
+  timezone: "Asia/Yangon",
+});
 
 export default app;
