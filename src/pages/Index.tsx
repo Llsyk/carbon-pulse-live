@@ -114,7 +114,6 @@
     const [airQuality, setAirQuality] = useState<AirQuality | null>(null);
     const [airErr, setAirErr] = useState<string | null>(null);
     const [isAirLoading, setIsAirLoading] = useState(false);
-    const [isPredictLoading, setIsPredictLoading] = useState(false);
     const isHistorical = selectedYear !== new Date().getFullYear().toString();
 
     const COUNTRY_COORDS: Record<string, { lat: number; lon: number }> = {
@@ -500,31 +499,6 @@
     fetchMetrics();   // try API again
   };
 
-  const handlePredict = async () => {
-    if (!user) return;
-    setIsPredictLoading(true);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/predict/send-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (res.ok) {
-        alert("Prediction email sent!");
-      } else {
-        alert("Failed to send prediction email.");
-      }
-    } catch (err) {
-      console.error("Predict error:", err);
-      alert("Error sending prediction.");
-    } finally {
-      setIsPredictLoading(false);
-    }
-  };
-
     return (
       <div className="min-h-screen bg-white">
         {/* --- NAVBAR --- */}
@@ -575,15 +549,6 @@
                     Explore Map
                   </a>
                 </Button>
-                {user && (
-                  <Button
-                    onClick={handlePredict}
-                    disabled={isPredictLoading}
-                    className="bg-green-600 hover:bg-green-700 text-white rounded-full px-5 py-2"
-                  >
-                    {isPredictLoading ? "Sending..." : "Predict"}
-                  </Button>
-                )}
               </div>
             </div>
           </div>

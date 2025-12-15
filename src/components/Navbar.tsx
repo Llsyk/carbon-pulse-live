@@ -19,7 +19,7 @@ export default function Navbar() {
   }, []);
 
   const { postCount, treesPlanted } = usePostCount(user?.id || null);
-  const active = (p: string) => (pathname === p ? "ring-2 ring-white/60" : "");
+  const active = (p: string) => (pathname === p ? "bg-white text-blue-700 shadow-md" : "");
 
   const logout = () => {
     localStorage.removeItem("token");
@@ -29,26 +29,26 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 bg-blue-600 text-white shadow-md" aria-label="Primary">
-      <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-white/60 rounded-lg">
-          <img src={logo} alt="EcoBreath Logo" width={36} height={36} className="rounded-md object-cover" />
-          <span className="font-semibold">EcoBreath</span>
+    <nav className="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg backdrop-blur-sm bg-opacity-95" aria-label="Primary">
+      <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+        <Link to="/" className="flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-white/60 rounded-lg transition-transform hover:scale-105">
+          <img src={logo} alt="EcoBreath Logo" width={40} height={40} className="rounded-lg object-cover shadow-sm" />
+          <span className="font-bold text-xl tracking-tight">EcoBreath</span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           <Link to="/">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/")}`}>
+            <Button variant="secondary" className={`bg-white/10 text-white hover:bg-white/20 border border-white transition-all duration-200 ${active("/")}`}>
               Home
             </Button>
           </Link>
           <Link to="/explorer">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/explorer")}`}>
+            <Button variant="secondary" className={`bg-white/10 text-white hover:bg-white/20 border border-white transition-all duration-200 ${active("/explorer")}`}>
               Map
             </Button>
           </Link>
           <Link to="/community">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/community")}`}>
+            <Button variant="secondary" className={`bg-white/10 text-white hover:bg-white/20 border border-white transition-all duration-200 ${active("/community")}`}>
               Community
             </Button>
           </Link>
@@ -56,22 +56,22 @@ export default function Navbar() {
           {!user && (
           <>
           <Link to="/login">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/login")}`}>
+            <Button variant="secondary" className={`bg-white/10 text-white hover:bg-white/20 border border-white transition-all duration-200 ${active("/login")}`}>
               Login
             </Button>
           </Link>
           <Link to="/signup">
-            <Button variant="secondary" className={`bg-white text-blue-700 hover:bg-blue-50 ${active("/signup")}`}>
+            <Button variant="secondary" className={`bg-white/10 text-white hover:bg-white/20 border border-white transition-all duration-200 ${active("/signup")}`}>
               Sign Up
             </Button>
           </Link>
           </>
           )}
           {user && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => setShowStatsModal(true)}
-                className="flex items-center gap-3 bg-gradient-to-r from-green-500/20 to-blue-500/20 px-4 py-2 rounded-full hover:from-green-500/30 hover:to-blue-500/30 transition-all border border-white/20"
+                className="flex items-center gap-3 bg-white/10 px-4 py-2 rounded-full hover:bg-white/20 transition-all duration-200 border border-white backdrop-blur-sm"
                 title="View your stats"
               >
                 <div className="flex items-center gap-1.5">
@@ -85,12 +85,12 @@ export default function Navbar() {
                 </div>
               </button>
 
-              <div className="flex items-center gap-2 bg-blue-700/40 px-3 py-1 rounded-full">
+              <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-full border border-white">
                 <CircleUserRound className="w-5 h-5"/>
-                
+                <span className="text-sm font-medium">{user.name || user.email}</span>
               </div>
       
-              <Button onClick={logout} variant="secondary" className="bg-white text-blue-700 hover:bg-blue-50">
+              <Button onClick={logout} variant="secondary" className="bg-white/10 text-white hover:bg-white/20 border border-white transition-all duration-200">
                 Logout
               </Button>
             </div>      

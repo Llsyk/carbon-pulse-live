@@ -1,10 +1,6 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useNavigate, Link } from "react-router-dom";
+import { api } from "@/lib/api";
 
 const ASEAN_COUNTRIES = [
   "Myanmar",
@@ -33,8 +29,7 @@ const CITIES_BY_COUNTRY: Record<string, string[]> = {
 };
 
 export default function Signup() {
-  const navigate = useNavigate();
-  const [formData, setFormData] = useState({
+  const navigate = useNavigate();  const [step, setStep] = useState(1);  const [formData, setFormData] = useState({
     account: { name: "", email: "", password: "", confirm: "", phone: "" },
     health: {
       country: "",
@@ -43,46 +38,76 @@ export default function Signup() {
       smoker: "",
       pregnant: "",
       aqiThreshold: 100,
-      notifyBy: "email",
       outings: [] as string[],
     },
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [outingTimesRaw, setOutingTimesRaw] = useState("");
+  const [passwordRules, setPasswordRules] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false,
+  });
+
+  const checkPasswordRules = (password: string) => {
+    setPasswordRules({
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+      special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
 
-    if (formData.account.password !== formData.account.confirm) {
-      setError("Passwords do not match.");
-      setLoading(false);
-      return;
-    }
+    if (step === 1) {
+      // Validate account
+      if (!formData.account.name || !formData.account.email || !formData.account.password || !formData.account.confirm) {
+        setError("Please fill all required fields.");
+        return;
+      }
+      if (formData.account.password !== formData.account.confirm) {
+        setError("Passwords do not match.");
+        return;
+      }
+      if (!passwordRules.length || !passwordRules.uppercase || !passwordRules.lowercase || !passwordRules.number || !passwordRules.special) {
+        setError("Password does not meet all requirements.");
+        return;
+      }
+      setStep(2);
+    } else {
+      // Submit
+      setLoading(true);
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/signup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        });
 
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Signup failed");
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Signup failed");
-
-      localStorage.setItem("user", JSON.stringify(data.user));
-      navigate("/");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        navigate("/");
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   const updateAccount = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, account: { ...prev.account, [field]: value } }));
-  };
+    setFormData((prev) => ({ ...prev, account: { ...prev.account, [field]: value } }));    if (field === "password") {
+      checkPasswordRules(value);
+    }  };
 
   const updateHealth = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, health: { ...prev.health, [field]: value } }));
@@ -100,193 +125,200 @@ export default function Signup() {
     }));
   };
 
-  const addOuting = (time: string) => {
-    if (!formData.health.outings.includes(time)) {
-      updateHealth("outings", [...formData.health.outings, time]);
-    }
-  };
-
-  const removeOuting = (time: string) => {
-    updateHealth("outings", formData.health.outings.filter((t) => t !== time));
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">Sign Up</h1>
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Account Section */}
-          <div>
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
+    <div className="flex items-center justify-center min-h-screen bg-blue-50">
+      <form onSubmit={handleSubmit} className="bg-white shadow-lg rounded-2xl p-8 w-full max-w-lg">
+        <h1 className="text-2xl font-semibold text-blue-700 mb-6 text-center">
+          Signup
+        </h1>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">
+            {error}
+          </div>
+        )}
+
+        {step === 1 ? (
+          <>
+            <label className="block mb-2">Name</label>
+            <input
+              type="text"
+              placeholder="Enter your name"
               value={formData.account.name}
               onChange={(e) => updateAccount("name", e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-4"
               required
             />
-          </div>
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
+
+            <label className="block mb-2">Email</label>
+            <input
               type="email"
+              placeholder="Enter your email"
               value={formData.account.email}
               onChange={(e) => updateAccount("email", e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-4"
               required
             />
-          </div>
-          <div>
-            <Label htmlFor="phone">Phone (optional)</Label>
-            <Input
-              id="phone"
-              value={formData.account.phone}
-              onChange={(e) => updateAccount("phone", e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
+
+            <label className="block mb-2">Password</label>
+            <input
               type="password"
+              placeholder="Enter your password"
               value={formData.account.password}
               onChange={(e) => updateAccount("password", e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-2"
               required
             />
-          </div>
-          <div>
-            <Label htmlFor="confirm">Confirm Password</Label>
-            <Input
-              id="confirm"
+            <div className="mb-4 text-sm">
+              <div className={`flex items-center ${passwordRules.length ? 'text-green-600' : 'text-red-600'}`}>
+                {passwordRules.length ? '✓' : '✗'} At least 8 characters
+              </div>
+              <div className={`flex items-center ${passwordRules.uppercase ? 'text-green-600' : 'text-red-600'}`}>
+                {passwordRules.uppercase ? '✓' : '✗'} One uppercase letter
+              </div>
+              <div className={`flex items-center ${passwordRules.lowercase ? 'text-green-600' : 'text-red-600'}`}>
+                {passwordRules.lowercase ? '✓' : '✗'} One lowercase letter
+              </div>
+              <div className={`flex items-center ${passwordRules.number ? 'text-green-600' : 'text-red-600'}`}>
+                {passwordRules.number ? '✓' : '✗'} One number
+              </div>
+              <div className={`flex items-center ${passwordRules.special ? 'text-green-600' : 'text-red-600'}`}>
+                {passwordRules.special ? '✓' : '✗'} One special character
+              </div>
+            </div>
+
+            <label className="block mb-2">Confirm Password</label>
+            <input
               type="password"
+              placeholder="Confirm your password"
               value={formData.account.confirm}
               onChange={(e) => updateAccount("confirm", e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-4"
               required
             />
-          </div>
 
-          {/* Health Section */}
-          <div>
-            <Label htmlFor="country">Country</Label>
-            <Select value={formData.health.country} onValueChange={(value) => updateHealth("country", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select country" />
-              </SelectTrigger>
-              <SelectContent>
-                {ASEAN_COUNTRIES.map((country) => (
-                  <SelectItem key={country} value={country}>
-                    {country}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="city">City</Label>
-            <Select
+            <button
+              type="submit"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg"
+            >
+              Next
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="block mb-2">Country</label>
+            <select
+              value={formData.health.country}
+              onChange={(e) => updateHealth("country", e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-4"
+            >
+              <option value="">Select country</option>
+              {ASEAN_COUNTRIES.map(country => <option key={country} value={country}>{country}</option>)}
+            </select>
+
+            <label className="block mb-2">City</label>
+            <select
               value={formData.health.city}
-              onValueChange={(value) => updateHealth("city", value)}
+              onChange={(e) => updateHealth("city", e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-4"
               disabled={!formData.health.country}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select city" />
-              </SelectTrigger>
-              <SelectContent>
-                {formData.health.country &&
-                  CITIES_BY_COUNTRY[formData.health.country]?.map((city) => (
-                    <SelectItem key={city} value={city}>
-                      {city}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Health Conditions</Label>
-            <div className="space-y-2">
-              {["Asthma", "COPD", "Heart Disease", "Diabetes"].map((condition) => (
-                <div key={condition} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={condition}
-                    checked={formData.health.conditions.includes(condition)}
-                    onCheckedChange={() => toggleCondition(condition)}
-                  />
-                  <Label htmlFor={condition}>{condition}</Label>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="smoker">Smoker?</Label>
-            <Select value={formData.health.smoker} onValueChange={(value) => updateHealth("smoker", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="yes">Yes</SelectItem>
-                <SelectItem value="no">No</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="pregnant">Pregnant?</Label>
-            <Select value={formData.health.pregnant} onValueChange={(value) => updateHealth("pregnant", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="yes">Yes</SelectItem>
-                <SelectItem value="no">No</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="aqiThreshold">AQI Threshold</Label>
-            <Input
-              id="aqiThreshold"
-              type="number"
-              value={formData.health.aqiThreshold}
-              onChange={(e) => updateHealth("aqiThreshold", Number(e.target.value))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="notifyBy">Notify By</Label>
-            <Select value={formData.health.notifyBy} onValueChange={(value) => updateHealth("notifyBy", value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Outing Times (HH:MM)</Label>
-            <div className="space-y-2">
-              {["08:00", "12:00", "18:00", "20:00"].map((time) => (
-                <div key={time} className="flex items-center space-x-2">
-                  <Checkbox
-                    checked={formData.health.outings.includes(time)}
-                    onCheckedChange={(checked) => (checked ? addOuting(time) : removeOuting(time))}
-                  />
-                  <Label>{time}</Label>
-                </div>
-              ))}
-            </div>
-          </div>
+              <option value="">Select city</option>
+              {formData.health.country && CITIES_BY_COUNTRY[formData.health.country]?.map(city => <option key={city} value={city}>{city}</option>)}
+            </select>
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Signing up..." : "Sign Up"}
-          </Button>
-        </form>
-        <p className="mt-4 text-center">
+            <label className="block mb-2">Health Conditions</label>
+            <div className="mb-4 grid grid-cols-2 gap-4">
+              {["Asthma", "COPD", "Heart Disease", "Diabetes"].map(condition => (
+                <label key={condition} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.health.conditions.includes(condition)}
+                    onChange={() => toggleCondition(condition)}
+                    className="mr-2"
+                  />
+                  {condition}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-4 mb-4">
+              <div className="flex-1">
+                <label className="block mb-2">Smoker?</label>
+                <select
+                  value={formData.health.smoker}
+                  onChange={(e) => updateHealth("smoker", e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2"
+                >
+                  <option value="">Select</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block mb-2">Pregnant?</label>
+                <select
+                  value={formData.health.pregnant}
+                  onChange={(e) => updateHealth("pregnant", e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2"
+                >
+                  <option value="">Select</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mb-4">
+              <div className="flex-1">
+                <label className="block mb-2">AQI Threshold</label>
+                <input
+                  type="number"
+                  value={formData.health.aqiThreshold}
+                  onChange={(e) => updateHealth("aqiThreshold", Number(e.target.value))}
+                  className="w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block mb-2">Outing Times</label>
+                <input
+                  type="text"
+                  placeholder="e.g., 08:00, 12:00, 18:00"
+                  value={outingTimesRaw}
+                  onChange={(e) => {
+                    setOutingTimesRaw(e.target.value);
+                    const times = e.target.value.split(",").map(t => t.trim()).filter(t => /^\d{2}:\d{2}$/.test(t));
+                    updateHealth("outings", times);
+                  }}
+                  className="w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="w-1/2 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded-lg"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-1/2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg disabled:opacity-60"
+              >
+                {loading ? "Signing up..." : "Sign Up"}
+              </button>
+            </div>
+          </>
+        )}
+
+        <p className="text-sm text-center mt-4">
           Already have an account?{" "}
-          <a href="/login" className="text-blue-500">
-            Login
-          </a>
+          <Link to="/login" className="text-blue-600 underline">Login</Link>
         </p>
-      </div>
+      </form>
     </div>
   );
 }

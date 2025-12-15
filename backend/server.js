@@ -205,8 +205,6 @@ app.post("/api/auth/signup", async (req, res) => {
       lat: cityData.lat,
       lng: cityData.lng,
       conditions: Array.isArray(health.conditions) ? health.conditions : [],
-      smoker: health.smoker ?? "",
-      pregnant: health.pregnant ?? "",
       aqiThreshold: Number(health.aqiThreshold ?? 100),
       notifyBy: health.notifyBy ?? "email",
       outings,
